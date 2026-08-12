@@ -42,7 +42,9 @@
   #incorporateBtn { display:none; background:linear-gradient(180deg,#e6b84c,#c99a2e); color:#241b05; font-weight:800; border:none; border-radius:8px; padding:7px 12px; cursor:pointer; font-size:12px; box-shadow:0 0 14px rgba(230,184,76,.55); animation:pulse 1.6s infinite; }
 
   /* ---------- Toolbar ---------- */
-  #toolbar { bottom:12px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; gap:5px; background:rgba(12,17,28,.88); border:1px solid rgba(230,184,76,.3); border-radius:12px; padding:6px; z-index:10; backdrop-filter:blur(6px); max-width:96vw; }
+  /* left:0/right:0 + margin auto centers without capping the shrink-to-fit width
+     at half the viewport, which was wrapping the tool row far too early */
+  #toolbar { bottom:12px; left:0; right:0; margin:0 auto; width:max-content; display:flex; flex-direction:column; gap:5px; background:rgba(12,17,28,.88); border:1px solid rgba(230,184,76,.3); border-radius:12px; padding:6px; z-index:10; backdrop-filter:blur(6px); max-width:96vw; }
   #toolcats { display:flex; gap:4px; justify-content:center; }
   #toolcats button { background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); color:#c2bbaa; border-radius:7px; padding:4px 12px; cursor:pointer; font-size:11px; font-weight:600; }
   #toolcats button.on { background:rgba(230,184,76,.25); border-color:#e6b84c; color:#f5e8c8; }
@@ -1024,10 +1026,31 @@ function makeWater(kind){
     }
     g.add(box(1.6,1.0,1.0,M.ind,0,0.06,-1.3));
   }
+  else if(kind==='cistern'){
+    // squat and wide, so it does not read as another wellhead from above
+    g.add(box(3.9,0.12,3.9,M.concrete));
+    g.add(cyl(1.65,1.65,1.5,M.white,-0.35,0.06,0,18));       // main tank
+    g.add(cyl(1.72,1.72,0.18,M.navy,-0.35,1.56,0,18));       // lid
+    g.add(cyl(0.9,0.9,1.15,M.white,1.45,0.06,1.3,14));       // second, smaller tank
+    g.add(cyl(0.95,0.95,0.14,M.navy,1.45,1.21,1.3,14));
+    g.add(box(0.16,1.5,0.16,M.indDark,-0.35,0.06,1.6));      // ladder up the shell
+    g.add(box(1.4,0.24,0.3,M.indDark,0.6,1.2,0.7));          // catwalk between tanks
+    g.add(box(0.9,0.7,0.9,M.ind,1.4,0.06,-1.3));             // pump house
+  }
+  else if(kind==='bank'){
+    g.add(box(3.9,0.12,3.9,M.concrete));
+    const pond=new THREE.MeshLambertMaterial({color:0x2e7396,transparent:true,opacity:0.88});
+    for(let k=-1;k<=1;k++){                                 // spreading basins behind low berms
+      g.add(box(2.6,0.36,1.05,M.concrete,-0.5,0.06,k*1.25));
+      g.add(box(2.2,0.18,0.7,pond,-0.5,0.3,k*1.25));
+    }
+    g.add(box(1.0,1.1,1.0,M.ind,1.45,0.06,0));              // turnout structure
+    g.add(cyl(0.18,0.18,0.9,M.indDark,1.45,1.16,0,6));
+  }
   return g;
 }
 const ENERGY_KINDS=['solar','wind','gas','hydro','geo','battery'];
-const WATER_KINDS=['well','intake','aqueduct','desal','recycle'];
+const WATER_KINDS=['well','intake','aqueduct','desal','recycle','cistern','bank'];
 function animateUtilities(dt,t){
   spinners.forEach(r=>{ r.rotation.z+=dt*1.35; });
   plumeSprites.forEach(p=>{
@@ -1736,6 +1759,7 @@ const S={
   dR:0.4, dC:0, dI:0,
   incorporated:false, cityName:'—',
   waterUse:0, waterCap:0, powerUse:0, powerCap:0, waterOK:true, powerOK:true,
+  waterStore:0, waterStoreCap:0, waterFillRate:0, waterDraw:0, waterAvail:0, waterFlow:0, waterStress:0,
   drought:false, reservoir:0.85, floodTimer:0, heatwave:false,
   policies:{adu:false,sb9:false,retrofit:false,defense:false,conserve:false,sb35:false},
   rhna:null, speed:1, tool:'select', started:false, mapId:null,
@@ -1763,7 +1787,7 @@ const RES_CAP=[0,4,12,40], RES_VAL=[0,750000,1900000,5200000], RES_UNITS=[0,1,3,
 const COM_JOBS=[0,6,16,45], COM_VAL=[0,900000,2200000,5500000];
 const IND_JOBS=[0,10,26,26], IND_VAL=[0,1100000,2600000,2600000];
 const CIVIC_OPEX={fire:1300,police:1200,school:1900,park:250,cityhall:2200,
-  well:320,intake:420,aqueduct:1500,desal:3800,recycle:900,
+  well:320,intake:420,aqueduct:1500,desal:3800,recycle:900,cistern:240,bank:620,
   solar:260,wind:300,gas:1450,hydro:700,geo:820,battery:340};
 // Generation. clean=counts toward SB 100. Output is modified by map and conditions.
 const ENERGY={
@@ -1791,6 +1815,10 @@ const WATERSRC={
     note:'Drought-proof and completely independent of rainfall. Enormously expensive, power-hungry, and the Coastal Commission will take its time.'},
   recycle:{name:'Water Recycling',ico:'♻️',out:0,cost:130000,demand:0.22,
     note:'Purple-pipe reuse for irrigation and industry. Produces no new supply — it cuts demand by 22%.'},
+  cistern:{name:'Storage Tank',ico:'🛢️',out:0,cost:60000,store:1400,fill:150,
+    note:'A covered tank on the edge of town. It fills from whatever your sources leave over and gives it back when a heat wave or a dry summer pushes demand above supply.'},
+  bank:{name:'Recharge Basin',ico:'💦',out:0,cost:240000,store:6000,fill:340,
+    note:'Spreading grounds that sink wet-year surplus back into the aquifer and pull it out in a dry one. Groundwater banking is how California actually stores water — and unlike a well, what you put in is yours to take back.'},
 };
 // Small cities contract with the county for public safety (the "Lakewood Plan")
 // and only stand up their own departments as they grow.
@@ -1836,6 +1864,8 @@ const TOOLS=[
   {id:'aqueduct',ico:'🚰',name:'Aqueduct',cost:210000,cat:'water',mapFlag:'aqueduct'},
   {id:'desal',ico:'🧂',name:'Desal',cost:420000,cat:'water',needWater:true,mapFlag:'desal'},
   {id:'recycle',ico:'♻️',name:'Recycling',cost:130000,cat:'water'},
+  {id:'cistern',ico:'🛢️',name:'Storage Tank',cost:60000,cat:'water'},
+  {id:'bank',ico:'💦',name:'Recharge Basin',cost:240000,cat:'water'},
 
   {id:'solar',ico:'☀️',name:'Solar',cost:40000,cat:'power'},
   {id:'wind',ico:'🌬️',name:'Wind',cost:55000,cat:'power'},
@@ -1883,7 +1913,8 @@ function renderToolbar(){
     const b=document.createElement('button');
     b.className='tool'; b.id='tool_'+t.id;
     const out=ENERGY[t.id]?(ENERGY[t.id].out?'+'+Math.round(ENERGY[t.id].out*(t.id==='solar'?MAP.solarMul:t.id==='wind'?MAP.windMul:1))+' MW':'storage')
-      :WATERSRC[t.id]?(WATERSRC[t.id].out?'+'+WATERSRC[t.id].out+' af':'−22% use'):'';
+      :WATERSRC[t.id]?(WATERSRC[t.id].out?'+'+WATERSRC[t.id].out+' af'
+        :WATERSRC[t.id].store?fmtN(WATERSRC[t.id].store)+' af store':'−22% use'):'';
     b.innerHTML=`<span class="ico">${t.ico}</span>${t.name}<span class="cost">${t.cost?fmt$(t.cost):''}</span>${out?`<span class="out">${out}</span>`:''}`;
     b.onclick=()=>{ const why=toolBlocked(t); if(why){ toast('🚫 '+why); return; } setTool(t.id); };
     toolRow.appendChild(b);
@@ -2399,7 +2430,9 @@ function showTip(p,mx,my){
       if(b.kind==='commuter') html+='Regional job access: +220<br>';
       if(b.kind==='hsr') html+='Regional job access: +900<br>';
       if(WATERSRC[b.kind]){ const w=WATERSRC[b.kind];
-        html+=w.out?`Yield: ${fmtN(w.out)} af${S.drought?' (cut by drought)':''}<br>`:'Cuts citywide demand 22%<br>';
+        html+=w.out?`Yield: ${fmtN(w.out)} af${S.drought?' (cut by drought)':''}<br>`
+          :w.store?`Storage: ${fmtN(w.store)} af · banks up to ${fmtN(w.fill)} af/day<br>`
+          :'Cuts citywide demand 22%<br>';
         if(w.power) html+=`Draws ${w.power} MW<br>`; }
       if(b.kind==='com') html+=`Jobs: ${COM_JOBS[b.level]}<br>`;
       if(b.kind==='ind') html+=`Jobs: ${IND_JOBS[b.level]}<br>`;
@@ -2721,6 +2754,7 @@ function removeLine(L){
 }
 
 // ---------- energy grid & water supply ----------
+const STORE_DRAW=0.30;      // share of the banked volume available on any one day
 function computeUtilities(){
   const n={}; ENERGY_KINDS.concat(WATER_KINDS).forEach(k=>n[k]=0);
   let pUse=0;
@@ -2766,7 +2800,58 @@ function computeUtilities(){
   const recycleCut=1-Math.min(0.5,n.recycle*WATERSRC.recycle.demand);
   S.waterUse=Math.round((S.pop*1.0+(S.comJobs+S.indJobs)*0.4)
     *(S.policies.conserve?0.8:1)*(S.heatwave?1.25:1)*recycleCut);
-  S.waterOK=S.waterCap>=S.waterUse||S.waterUse===0;
+  // ---- storage ----
+  // Supply is a step function but demand creeps up every single day, and the
+  // reservoir drawdown pulls well and intake yield down all summer. Without a
+  // buffer a city sitting near its capacity crosses the line every few days,
+  // which read to the player as the water system randomly breaking.
+  let storeCap=0,fillRate=0;
+  WATER_KINDS.forEach(k=>{ const w=WATERSRC[k];
+    if(w.store){ storeCap+=n[k]*w.store; fillRate+=n[k]*w.fill; } });
+  S.waterStoreCap=Math.round(storeCap);
+  S.waterFillRate=Math.round(fillRate);
+  S.waterStore=clamp(S.waterStore||0,0,S.waterStoreCap);
+  // Hysteresis: once short, demand must be cleared by 4% to count as supplied
+  // again, so a city sitting exactly on the line is not flagged every other day.
+  // The bank draws against that same threshold — otherwise it could only ever
+  // reach break-even and a fully-covered city would never clear the margin.
+  const need=S.waterUse*(S.waterOK?1:1.04);
+  // only part of the bank can be released on any one day — storage buys time, not supply
+  S.waterDraw=S.waterCap<need
+    ? Math.round(Math.min(need-S.waterCap,S.waterStore,S.waterStoreCap*STORE_DRAW)) : 0;
+  S.waterAvail=S.waterCap+S.waterDraw;
+  S.waterOK=S.waterUse===0||S.waterAvail>=need;
+  S.waterStress=S.waterOK?0:clamp(1-S.waterAvail/Math.max(S.waterUse,1),0,1);
+}
+// Moves water in and out of the bank. Called once per day only — computeUtilities
+// also runs on load and on new game, and must stay free of side effects.
+function stepWaterStorage(){
+  if(S.waterStoreCap<=0){ S.waterStore=0; S.waterFlow=0; return; }
+  const bal=S.waterCap-S.waterUse;
+  if(bal>0){
+    const put=Math.min(bal,S.waterFillRate,S.waterStoreCap-S.waterStore);
+    S.waterStore=clamp(S.waterStore+put,0,S.waterStoreCap);
+    S.waterFlow=Math.round(put);
+  } else {
+    S.waterStore=clamp(S.waterStore-(S.waterDraw||0),0,S.waterStoreCap);
+    S.waterFlow=-(S.waterDraw||0);
+  }
+}
+// Warn while there is still time to act, instead of only once the taps run short.
+function waterWatch(){
+  if(!S.started||S.waterUse<=0) return;
+  const head=S.waterCap/Math.max(S.waterUse,1);
+  if(S.waterOK&&head<1.15&&S.day-(S._waterWarn||-9999)>150){
+    S._waterWarn=S.day;
+    if(S.waterStoreCap>0&&S.waterStore>S.waterStoreCap*0.25)
+      advise(`💧 Demand has climbed to <b>${Math.round(100/head)}%</b> of your supply and the bank is covering the gap. Storage buys months, not years — line up another source.`,'warn');
+    else
+      advise(`💧 <b>Water is running tight.</b> Demand is at <b>${Math.round(100/head)}%</b> of supply and still rising. Add a source, or build storage to ride out the summer draw-down and the next heat wave.`,'warn');
+  }
+  if(S.waterStoreCap>0&&!S.waterOK&&S.waterStore<S.waterStoreCap*0.15&&S.day-(S._bankWarn||-9999)>200){
+    S._bankWarn=S.day;
+    advise('🛢 <b>The water bank is nearly empty.</b> It has been carrying the city for weeks. Nothing refills it until supply exceeds demand again.','bad');
+  }
 }
 // SB 100 requires 100% clean retail electricity by 2045
 function sb100Target(y){ return clamp(0.44+(y-2024)*(0.56/21),0.44,1); }
@@ -2879,6 +2964,8 @@ function dailyTick(){
   }
   recount();
   computeUtilities();
+  stepWaterStorage();
+  waterWatch();
   // demand
   const jobs=S.comJobs+S.indJobs+regionalJobs();
   const apprMul=clamp(0.5+S.approval/100,0.5,1.4);
@@ -2905,7 +2992,7 @@ function dailyTick(){
   }
   const targetPop=S.housingCap*S.occupancy;
   S.pop+=(targetPop-S.pop)*0.035;
-  if(!S.waterOK) S.pop*=0.997;
+  if(!S.waterOK) S.pop*=1-0.004*clamp(S.waterStress*3,0.12,1);   // a 2% shortfall is not an exodus
   S.pop=Math.max(0,S.pop);
   parcels.forEach(p=>{
     if(p.state!=='pending') return;
@@ -2940,7 +3027,7 @@ function monthlyTick(){
   let parks=0,schools=0;
   allBuildings.forEach(b=>{ if(b.state!=='done')return; if(b.kind==='park')parks++; if(b.kind==='school')schools++; });
   let a=58;
-  a+=S.waterOK?4:-18; a+=S.powerOK?3:-12;
+  a+=S.waterOK?4:-(7+22*clamp(S.waterStress*3,0,1)); a+=S.powerOK?3:-12;
   a-=S.crime*32; a-=S.avgCong*16;
   a+=clamp(S.modeShare||0,0,0.6)*16;      // people like having a way to get around
   a+=clamp(parks/(S.pop/220+1),0,1)*8;
@@ -2954,7 +3041,9 @@ function monthlyTick(){
   // tell the player what is actually costing them, before it costs them the election
   if(S.approval<50&&S.day-(S._apprWarn||-999)>200){
     const gripes=[];
-    if(!S.waterOK) gripes.push('the water system cannot meet demand');
+    if(!S.waterOK) gripes.push(S.waterStress>0.15
+      ?`water — supply is ${Math.round(S.waterStress*100)}% short of demand`
+      :'water pressure at the summer peak');
     if(!S.powerOK) gripes.push('the power supply is short');
     if(S.crime>0.22) gripes.push('crime — you need police coverage across the whole city');
     if(S.avgCong>0.55) gripes.push('traffic — upgrade the busy corridors to avenues');
@@ -3293,10 +3382,17 @@ function renderPanel(){
       <div class="lawNote"><b>SB 100 (2018):</b> California requires 100% carbon-free retail electricity by 2045. Gas is dense and dependable, but every megawatt of it drags your compliance down. Batteries count as clean because they shift solar into the evening.</div>
 
       <div class="mapSect">Water</div>
-      <div class="uRow"><span>Supply</span><b class="${S.waterOK?'':'neg'}">${fmtN(S.waterCap)} af</b></div>
+      <div class="uRow"><span>Supply</span><b class="${S.waterOK?'':'neg'}">${fmtN(S.waterCap)} af${S.waterDraw>0?` <span style="color:#5ec8b0">+${fmtN(S.waterDraw)} banked</span>`:''}</b></div>
       <div class="uRow"><span>Demand</span><b>${fmtN(S.waterUse)} af${n.recycle?' (recycling applied)':''}</b></div>
       <div class="uBar">${wsegs.map(([,c,v])=>v>0?`<i style="width:${v/wTotal*100}%;background:${c}"></i>`:'').join('')}</div>
       <div class="uLegend">${wsegs.filter(x=>x[2]>0).map(([l,c])=>`<span><i style="background:${c}"></i>${l}</span>`).join('')}</div>
+      ${S.waterStoreCap>0?`
+      <div class="uRow"><span>Banked storage</span><b style="color:${S.waterStore>S.waterStoreCap*0.3?'#8fd97a':S.waterStore>S.waterStoreCap*0.12?'#e0cf7a':'#ff8a7a'}">${fmtN(S.waterStore)} / ${fmtN(S.waterStoreCap)} af</b></div>
+      <div class="uBar"><i style="width:${clamp(S.waterStore/S.waterStoreCap*100,0,100)}%;background:#5ec8b0"></i></div>
+      ${S.waterStore>=S.waterStoreCap&&(S.waterFlow||0)>=0
+        ?`<div class="uRow"><span>Bank status</span><b class="pos">Full — riding out the next dry summer</b></div>`
+        :`<div class="uRow"><span>${(S.waterFlow||0)<0?'Drawing from the bank':'Recharging the bank'}</span><b class="${(S.waterFlow||0)<0?'neg':'pos'}">${(S.waterFlow||0)<0?'−':'+'}${fmtN(Math.abs(S.waterFlow||0))} af/day</b></div>`}`
+      :`<div class="lawNote">You have <b>no water storage</b>. Supply only jumps when you build a source, but demand climbs every day and well and river yield fall all summer as the reservoir draws down — so a city with no bank crosses into shortage the moment a heat wave hits. Build a <b>🛢️ Storage Tank</b> or a <b>💦 Recharge Basin</b> to bank the surplus you already have.</div>`}
       <div class="uRow"><span>Reservoir storage</span><b>${Math.round(S.reservoir*100)}%</b></div>
       <div class="uRow"><span>Conditions</span><b>${S.drought?'🏜 Drought year':'🌧 Normal year'}${S.heatwave?' · 🥵 heat wave':''}</b></div>
       <div class="uRow"><span>${MAP.basin}</span><b class="${S.gwOverdraft?'neg':''}" style="color:${S.gwOverdraft?'#ff8a7a':'#f0e6d2'}">${fmtN(S.gwRequested)} / ${fmtN(S.gwCap)} af</b></div>
@@ -3399,7 +3495,7 @@ function serialize(){
   return {v:5,map:S.mapId,parcels:par,lines,
     S:{money,day,dom,month,year,startYear,pop,incorporated,cityName,drought,reservoir,approval,crime,tut,tutPending,termCount,disasterHeat,heatwave,floodTimer,
        impactFeesTotal:S.impactFeesTotal,tractsRecorded:S.tractsRecorded,lockDay:S.lockDay,
-       transitGrants:S.transitGrants},
+       transitGrants:S.transitGrants,waterStore:S.waterStore},
     policies:S.policies,rhna:S.rhna,bonds:S.bonds,cells,deadTrees};
 }
 document.getElementById('saveBtn').onclick=()=>{
@@ -3516,6 +3612,7 @@ function startGame(mapId,silent){
   // reset state
   Object.assign(S,{money:2000000,day:0,dom:1,month:2,year:2026,startYear:2026,pop:0,housingCap:0,comJobs:0,indJobs:0,
     dR:0.4,dC:0,dI:0,incorporated:false,cityName:MAP.name,waterUse:0,waterCap:0,powerUse:0,powerCap:0,waterOK:true,powerOK:true,
+    waterStore:0,waterStoreCap:0,waterFillRate:0,waterDraw:0,waterAvail:0,waterFlow:0,waterStress:0,
     drought:false,reservoir:0.85,floodTimer:0,heatwave:false,rhna:null,speed:1,tool:'select',started:true,
     budget:{},bonds:[],tut:false,tutPending:false,approval:60,crime:0,disasterHeat:0,avgCong:0,termCount:0,
     subZone:'R1',monthImpactFees:0,impactFeesTotal:0,tractsRecorded:0,
