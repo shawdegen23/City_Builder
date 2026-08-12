@@ -294,7 +294,12 @@ const fmt$=n=>'$'+Math.round(n).toLocaleString('en-US');
 const fmtN=n=>Math.round(n).toLocaleString('en-US');
 
 // ---------- world constants ----------
-const G=90, CELL=4, WORLD=620, HALF=G*CELL/2;
+// The buildable grid used to be 360 units across inside a 620-unit world, so only
+// a third of the land you could see was land you could ever build on — the outer
+// band looked identical to the rest and simply refused every tool. The grid now
+// covers 560 of the 620, leaving a thin scenic margin instead of a dead zone.
+const G=140, CELL=4, WORLD=620, HALF=G*CELL/2;
+const CAM_LIMIT=Math.min(HALF+60,WORLD/2-15);
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 // ---------- California regions ----------
@@ -594,7 +599,7 @@ function buildOverlayMesh(){
   overlayTex=(()=>{ const cv=document.createElement('canvas'); cv.width=cv.height=G;
     overlayCtx=cv.getContext('2d'); overlayCtx.clearRect(0,0,G,G);
     const t=new THREE.CanvasTexture(cv); t.magFilter=THREE.NearestFilter; return t; })();
-  const gSeg=G*2;
+  const gSeg=Math.min(G*2,200);   // the overlay only has to follow the terrain, not every cell
   const og=new THREE.PlaneGeometry(G*CELL,G*CELL,gSeg,gSeg).rotateX(-Math.PI/2);
   const op=og.attributes.position;
   for(let k=0;k<op.count;k++) op.setY(k,baseH(op.getX(k),op.getZ(k))+0.32);
@@ -696,8 +701,8 @@ function camTick(dt){
   if(keys['s']||keys['arrowdown']){ camTarget.x+=fx*sp; camTarget.z+=fz*sp; }
   if(keys['a']||keys['arrowleft']){ camTarget.x-=fz*sp; camTarget.z+=fx*sp; }
   if(keys['d']||keys['arrowright']){ camTarget.x+=fz*sp; camTarget.z-=fx*sp; }
-  camTarget.x=clamp(camTarget.x,-HALF-80,HALF+80);
-  camTarget.z=clamp(camTarget.z,-HALF-80,HALF+80);
+  camTarget.x=clamp(camTarget.x,-CAM_LIMIT,CAM_LIMIT);
+  camTarget.z=clamp(camTarget.z,-CAM_LIMIT,CAM_LIMIT);
   applyCam();
   if(shakeAmt>0.001){
     camera.position.x+=(Math.random()-0.5)*shakeAmt;
@@ -3587,7 +3592,7 @@ function serialize(){
   const par=parcels.filter(p=>p.state!=='void').map(p=>({id:p.id,i0:p.i0,j0:p.j0,i1:p.i1,j1:p.j1,z:p.zone,
     st:p.state,dl:p.daysLeft,td:p.totalDays,mt:p.mapType,cq:p.ceqa,fe:p.fees,tr:p.tract,ap:p.appealed}));
   const lines=transitLines.map(L=>({m:L.mode,s:L.stops,n:L.name,c:L.color}));
-  return {v:6,map:S.mapId,parcels:par,lines,
+  return {v:7,map:S.mapId,parcels:par,lines,
     S:{money,day,dom,month,year,startYear,pop,incorporated,cityName,drought,reservoir,approval,crime,tut,tutPending,termCount,disasterHeat,heatwave,floodTimer,
        impactFeesTotal:S.impactFeesTotal,tractsRecorded:S.tractsRecorded,lockDay:S.lockDay,
        transitGrants:S.transitGrants,waterStore:S.waterStore},
@@ -3612,8 +3617,18 @@ loadInput.onchange=()=>{
   rd.readAsText(f);
   loadInput.value='';
 };
+const OLD_G=90;                  // grid size before the buildable area was widened
 function loadGame(data){
-  if(!data||!(data.v>=2&&data.v<=6)||!MAPS[data.map]) { toast('⚠️ Not a valid Golden State Builder save.',true); return; }
+  if(!data||!(data.v>=2&&data.v<=7)||!MAPS[data.map]) { toast('⚠️ Not a valid Golden State Builder save.',true); return; }
+  // Cell indices are measured from the centre of the grid, so widening it moved
+  // every index relative to the terrain. Shift saves from the old grid by half
+  // the difference and they land back on exactly the ground they were built on.
+  if(data.v<7){
+    const off=(G-OLD_G)/2;
+    (data.cells||[]).forEach(e=>{ e.i+=off; e.j+=off; });
+    (data.parcels||[]).forEach(p=>{ p.i0+=off; p.j0+=off; p.i1+=off; p.j1+=off; });
+    (data.lines||[]).forEach(L=>{ L.s=(L.s||[]).map(([i,j])=>[i+off,j+off]); });
+  }
   const upZ=z=>z==='R'?'R1':z;   // older saves only had one residential designation
   startGame(data.map,true);
   Object.assign(S,data.S);
