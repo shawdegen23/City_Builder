@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Golden State Builder — every build</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0b1428;color:#ece4d0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.6;padding:48px 20px 80px}
+  .wrap{max-width:760px;margin:0 auto}
+  h1{font-size:34px;color:#e6b84c;letter-spacing:.01em;margin-bottom:2px}
+  .sub{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:#c8a44f;margin-bottom:22px}
+  .lede{color:#b8b09c;font-size:14px;margin-bottom:34px;max-width:620px}
+  .card{display:block;text-decoration:none;color:inherit;background:rgba(255,255,255,.045);
+    border:1px solid rgba(255,255,255,.1);border-left:3px solid #e6b84c;border-radius:12px;
+    padding:18px 20px;margin-bottom:14px;transition:transform .15s,border-color .15s,background .15s}
+  .card:hover{transform:translateY(-2px);border-color:rgba(230,184,76,.55);background:rgba(255,255,255,.07)}
+  .card.latest{border-left-color:#8fd97a;background:rgba(143,217,122,.07)}
+  .row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .v{font-size:19px;font-weight:800;color:#f0e2ba}
+  .tag{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:20px;
+    background:rgba(143,217,122,.18);color:#8fd97a}
+  .d{color:#a8b0c0;font-size:13px;margin-top:6px}
+  .feat{color:#8f97a8;font-size:12px;margin-top:8px}
+  .feat b{color:#c8bfa8;font-weight:600}
+  footer{margin-top:40px;padding-top:20px;border-top:1px solid rgba(255,255,255,.08);color:#6f7686;font-size:11.5px}
+  a.plain{color:#c8a44f;text-decoration:none}
+  a.plain:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Golden State Builder</h1>
+  <div class="sub">A California city builder · every build</div>
+  <p class="lede">Each version is playable and self-contained — nothing carries over between them, so you can open any build and start a city. Saves are version-specific.</p>
+
+  <a class="card latest" href="/v5.html">
+    <div class="row"><span class="v">Volume 5 — Public Transit</span><span class="tag">Latest</span></div>
+    <div class="d">Draw bus routes along your streets and light rail on its own right-of-way. Commuter rail and high-speed rail stations connect you to the region.</div>
+    <div class="feat"><b>AB 2097</b> ends parking minimums near stations · <b>SB 743</b> swaps traffic studies for vehicle miles travelled · transit cuts congestion and lifts land value · farebox recovery, TIRCP grants</div>
+  </a>
+
+  <a class="card" href="/v4.html">
+    <div class="row"><span class="v">Volume 4 — Housing, Power &amp; Water</span></div>
+    <div class="d">Four zoning designations from single-family to mixed-use. Six ways to make electricity, five ways to find water — and what you can build depends on where you settled.</div>
+    <div class="feat"><b>SB 100</b> clean-electricity mandate · <b>SGMA</b> groundwater limits · hydro, geothermal and desalination gated by geography · day/night toggle</div>
+  </a>
+
+  <a class="card" href="/v3.html">
+    <div class="row"><span class="v">Volume 3 — Subdivision</span></div>
+    <div class="d">Roads lead somewhere. Run one out to raw land, drag a parcel, and take it through the process — the recorded tract lays in its own streets and lots.</div>
+    <div class="feat"><b>Subdivision Map Act</b>: Tentative Map → CEQA → Planning Commission → Final Map · neighbor appeals · Quimby, school and traffic impact fees</div>
+  </a>
+
+  <a class="card" href="/v2.html">
+    <div class="row"><span class="v">Volume 2 — Four Californias</span></div>
+    <div class="d">Sierra foothills, Central Valley farmland, the Pacific coast, and the high Mojave — each with its own terrain, hazards and climate.</div>
+    <div class="feat">Save and load · elections and recalls · land value and traffic overlays · bridges, avenues, bonds and Measure T</div>
+  </a>
+
+  <a class="card" href="/v1.html">
+    <div class="row"><span class="v">Volume 1 — Dry Creek Valley</span></div>
+    <div class="d">Where it started: 1,300 acres of unincorporated oak foothills, a river, and a fire season.</div>
+    <div class="feat"><b>Prop 13</b> property tax caps · <b>CEQA</b> review · <b>RHNA</b> housing mandates and the Builder's Remedy · wildfires, earthquakes, drought</div>
+  </a>
+
+  <footer>
+    Built with Three.js. Runs entirely in the browser — no account, no server, nothing stored anywhere but your own save files.<br>
+    <a class="plain" href="/">← Play the latest build</a>
+  </footer>
+</div>
+</body>
+</html>

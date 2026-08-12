@@ -1,0 +1,2623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Golden State Builder 3 — A California City Builder</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0b1428; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #c { position:absolute; inset:0; display:block; }
+  .hud { position:absolute; color:#f2ead8; user-select:none; -webkit-user-select:none; }
+  body.photo .hud { display:none !important; }
+  body.photo #photoExit { display:block !important; }
+  #photoExit { display:none; position:absolute; top:14px; right:14px; z-index:30; background:rgba(12,17,28,.8); color:#e6b84c; border:1px solid #e6b84c; border-radius:8px; padding:7px 13px; cursor:pointer; font-size:12px; }
+
+  /* ---------- Top bar ---------- */
+  #topbar { top:0; left:0; right:0; height:52px; background:linear-gradient(180deg,rgba(12,17,28,.92),rgba(12,17,28,.78)); border-bottom:1px solid rgba(230,184,76,.35); display:flex; align-items:center; gap:12px; padding:0 12px; z-index:10; backdrop-filter:blur(6px); }
+  #cityName { font-weight:700; font-size:14px; color:#e6b84c; white-space:nowrap; max-width:200px; overflow:hidden; text-overflow:ellipsis; }
+  #cityName small { display:block; font-weight:400; font-size:10px; color:#b9b09a; }
+  .stat { display:flex; flex-direction:column; align-items:flex-start; min-width:58px; }
+  .stat .lbl { font-size:9px; text-transform:uppercase; letter-spacing:.08em; color:#9aa3b5; }
+  .stat .val { font-size:13px; font-weight:600; }
+  .stat .val.warn { color:#ff9c5b; } .stat .val.bad { color:#ff5b5b; } .stat .val.good { color:#8fd97a; }
+  #demandBars { display:flex; gap:5px; align-items:flex-end; height:26px; margin-top:2px; }
+  .dbar { width:11px; background:rgba(255,255,255,.12); border-radius:2px; position:relative; height:24px; overflow:hidden; }
+  .dbar i { position:absolute; bottom:0; left:0; right:0; border-radius:2px; transition:height .4s; }
+  .dbar span { position:absolute; bottom:-13px; left:0; right:0; text-align:center; font-size:8px; color:#9aa3b5; }
+  #dR i{background:#63c94f;} #dC i{background:#4fa8e0;} #dI i{background:#e0b64f;}
+  #fireRisk { padding:3px 8px; border-radius:20px; font-size:10.5px; font-weight:700; background:#2c4a2f; color:#9fd48a; white-space:nowrap; }
+  #fireRisk.mod { background:#4a432c; color:#e0cf7a; }
+  #fireRisk.high { background:#4a352c; color:#f0a56b; }
+  #fireRisk.extreme { background:#4a2c2c; color:#ff6b5b; animation:pulse 1.2s infinite; }
+  @keyframes pulse { 50% { filter:brightness(1.45);} }
+  #spacer { flex:1; }
+  .speedBtn, .panelBtn, .miniBtn { background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14); color:#e8e0cd; border-radius:6px; padding:5px 8px; cursor:pointer; font-size:12px; }
+  .speedBtn.active { background:#e6b84c; color:#1b1408; font-weight:700; border-color:#e6b84c; }
+  .panelBtn { position:relative; }
+  .panelBtn.active { background:rgba(230,184,76,.28); border-color:#e6b84c; }
+  #noteBadge, #mapBadgeX { position:absolute; top:-6px; right:-6px; background:#e05b4f; color:#fff; border-radius:10px; font-size:9px; min-width:15px; height:15px; line-height:15px; text-align:center; padding:0 3px; display:none; }
+  #incorporateBtn { display:none; background:linear-gradient(180deg,#e6b84c,#c99a2e); color:#241b05; font-weight:800; border:none; border-radius:8px; padding:7px 12px; cursor:pointer; font-size:12px; box-shadow:0 0 14px rgba(230,184,76,.55); animation:pulse 1.6s infinite; }
+
+  /* ---------- Toolbar ---------- */
+  #toolbar { bottom:12px; left:50%; transform:translateX(-50%); display:flex; gap:4px; background:rgba(12,17,28,.88); border:1px solid rgba(230,184,76,.3); border-radius:12px; padding:6px; z-index:10; backdrop-filter:blur(6px); flex-wrap:wrap; justify-content:center; max-width:96vw; }
+  .tool { width:55px; padding:5px 2px 4px; border-radius:8px; border:1px solid transparent; background:transparent; color:#e8e0cd; cursor:pointer; text-align:center; font-size:9.5px; line-height:1.25; }
+  .tool .ico { font-size:18px; display:block; }
+  .tool .cost { color:#9aa3b5; font-size:8.5px; display:block; }
+  .tool:hover { background:rgba(255,255,255,.08); }
+  .tool.active { background:rgba(230,184,76,.22); border-color:#e6b84c; }
+  .tool.locked { opacity:.35; cursor:not-allowed; }
+  .tool.broke { opacity:.45; }
+
+  /* ---------- Overlay selector ---------- */
+  #ovlBar { bottom:14px; right:14px; z-index:10; display:flex; flex-direction:column; gap:5px; align-items:flex-end; }
+  #ovlBar .row { display:flex; gap:5px; }
+  .ovlBtn { background:rgba(12,17,28,.85); border:1px solid rgba(255,255,255,.18); color:#d8d0bd; border-radius:7px; padding:5px 9px; cursor:pointer; font-size:10.5px; }
+  .ovlBtn.active { background:rgba(230,184,76,.25); border-color:#e6b84c; color:#f2e2b0; }
+  #ctrlHint { font-size:9.5px; color:#8892a5; text-align:right; line-height:1.5; background:rgba(12,17,28,.55); padding:5px 8px; border-radius:8px; }
+
+  /* ---------- Side panel ---------- */
+  #sidepanel { top:60px; right:10px; width:340px; max-height:calc(100% - 150px); background:rgba(12,17,28,.93); border:1px solid rgba(230,184,76,.3); border-radius:12px; z-index:10; display:none; flex-direction:column; backdrop-filter:blur(6px); }
+  #sidepanel.open { display:flex; }
+  #sidepanel h2 { font-size:13px; color:#e6b84c; padding:11px 14px 8px; border-bottom:1px solid rgba(255,255,255,.1); }
+  #panelBody { overflow-y:auto; padding:10px 14px 14px; font-size:12px; line-height:1.5; }
+  #panelBody::-webkit-scrollbar { width:6px; } #panelBody::-webkit-scrollbar-thumb { background:rgba(255,255,255,.2); border-radius:3px; }
+  .brow { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px dashed rgba(255,255,255,.07); }
+  .brow b.pos { color:#8fd97a; } .brow b.neg { color:#ff8a7a; }
+  .brow.total { border-top:1px solid rgba(255,255,255,.25); border-bottom:none; margin-top:5px; padding-top:6px; font-weight:700; }
+  .lawNote { background:rgba(230,184,76,.09); border-left:3px solid #e6b84c; padding:7px 9px; margin:9px 0; border-radius:0 6px 6px 0; font-size:11px; color:#d8cfb8; }
+  .pol { display:flex; gap:9px; align-items:flex-start; padding:8px 0; border-bottom:1px dashed rgba(255,255,255,.08); }
+  .pol input { margin-top:3px; accent-color:#e6b84c; }
+  .pol .pname { font-weight:700; font-size:12px; }
+  .pol .pdesc { color:#a8b0c0; font-size:10.5px; }
+  .pol.locked { opacity:.4; }
+  .note { padding:7px 9px; margin-bottom:7px; background:rgba(255,255,255,.05); border-radius:8px; font-size:11.5px; border-left:3px solid #4fa8e0; }
+  .note.warn { border-left-color:#e0a44f; } .note.bad { border-left-color:#e05b4f; }
+  .note .when { color:#8892a5; font-size:9px; display:block; margin-top:2px; }
+  .rhnaBar { height:9px; background:rgba(255,255,255,.12); border-radius:5px; overflow:hidden; margin:5px 0; }
+  .rhnaBar i { display:block; height:100%; background:linear-gradient(90deg,#63c94f,#8fd97a); border-radius:5px; }
+  .actionBtn { display:block; width:100%; margin:7px 0; background:rgba(230,184,76,.16); border:1px solid rgba(230,184,76,.5); color:#f2e2b0; border-radius:8px; padding:8px; cursor:pointer; font-size:12px; font-weight:600; }
+  .actionBtn:hover { background:rgba(230,184,76,.28); }
+  .actionBtn:disabled { opacity:.4; cursor:not-allowed; }
+
+  /* ---------- Toasts / tooltip ---------- */
+  #toasts { bottom:14px; left:14px; z-index:11; display:flex; flex-direction:column; gap:7px; max-width:330px; }
+  .toast { background:rgba(12,17,28,.94); border:1px solid rgba(230,184,76,.4); border-radius:10px; padding:9px 13px; font-size:12px; color:#f0e8d5; animation:slideIn .3s; box-shadow:0 4px 18px rgba(0,0,0,.5); }
+  .toast.bad { border-color:rgba(224,91,79,.7); }
+  @keyframes slideIn { from { transform:translateX(-24px); opacity:0; } }
+  #tooltip { display:none; position:absolute; background:rgba(12,17,28,.95); border:1px solid rgba(230,184,76,.45); border-radius:8px; padding:8px 11px; font-size:11px; color:#f0e8d5; z-index:12; pointer-events:none; max-width:240px; line-height:1.45; }
+  #tooltip b { color:#e6b84c; }
+
+  /* ---------- Modals ---------- */
+  .overlay { position:absolute; inset:0; background:rgba(4,8,16,.8); z-index:20; display:flex; align-items:center; justify-content:center; backdrop-filter:blur(4px); }
+  .modal { background:linear-gradient(180deg,#161d2c,#101625); border:1px solid rgba(230,184,76,.45); border-radius:16px; padding:26px 30px; max-width:640px; width:94%; color:#ece4d0; text-align:center; box-shadow:0 12px 50px rgba(0,0,0,.6); max-height:92vh; overflow-y:auto; }
+  .modal h1 { font-size:28px; color:#e6b84c; letter-spacing:.02em; margin-bottom:2px; }
+  .modal h3 { font-size:12px; color:#c8a44f; font-weight:600; margin-bottom:12px; letter-spacing:.14em; text-transform:uppercase; }
+  .modal p { font-size:13px; line-height:1.6; color:#c3bba6; margin-bottom:10px; text-align:left; }
+  .modal .bigbtn { margin-top:12px; background:linear-gradient(180deg,#e6b84c,#c99a2e); border:none; color:#241b05; font-size:15px; font-weight:800; padding:11px 32px; border-radius:10px; cursor:pointer; }
+  .modal .bigbtn:hover { filter:brightness(1.08); }
+  .modal input[type=text] { width:100%; padding:10px 13px; border-radius:8px; border:1px solid rgba(230,184,76,.5); background:rgba(255,255,255,.07); color:#fff; font-size:15px; text-align:center; outline:none; }
+  #mapGrid { display:grid; grid-template-columns:1fr 1fr; gap:11px; margin:14px 0 4px; }
+  .mapCard { border:1px solid rgba(255,255,255,.18); border-radius:12px; padding:0; cursor:pointer; overflow:hidden; text-align:left; background:rgba(255,255,255,.04); transition:transform .15s, border-color .15s; }
+  .mapCard:hover { transform:translateY(-3px); border-color:#e6b84c; }
+  .mapThumb { height:64px; }
+  .mapCard .mi { padding:9px 12px 11px; }
+  .mapCard .mn { font-weight:800; font-size:14px; color:#f0e2ba; }
+  .mapCard .mc { font-size:9.5px; color:#9aa3b5; text-transform:uppercase; letter-spacing:.08em; margin-bottom:4px; }
+  .mapCard .md { font-size:10.5px; color:#b8b09c; line-height:1.45; }
+  .mapCard .mh { font-size:9.5px; color:#d8a86a; margin-top:5px; }
+  #loadStartBtn { margin-top:10px; background:none; border:1px solid rgba(255,255,255,.25); color:#c8c0ac; border-radius:8px; padding:8px 18px; cursor:pointer; font-size:12px; }
+  .statGrid { display:grid; grid-template-columns:1fr 1fr; gap:7px; margin:12px 0; }
+  .statCard { background:rgba(255,255,255,.06); border-radius:9px; padding:9px; text-align:center; }
+  .statCard .n { font-size:19px; font-weight:800; color:#e6b84c; }
+  .statCard .l { font-size:9.5px; color:#9aa3b5; text-transform:uppercase; letter-spacing:.06em; }
+
+  /* ---------- Subdivision ---------- */
+  #rectLabel { display:none; position:absolute; z-index:12; background:rgba(12,17,28,.94); border:1px solid rgba(255,154,60,.75);
+    border-radius:8px; padding:7px 11px; font-size:11.5px; color:#f5e8d5; pointer-events:none; line-height:1.5; white-space:nowrap; }
+  #rectLabel b { color:#ff9a3c; }
+  #rectLabel .bad { color:#ff7a6a; }
+  .modal.map h1 { font-size:23px; }
+  .mapRow { display:flex; justify-content:space-between; gap:10px; padding:5px 0; border-bottom:1px dashed rgba(255,255,255,.09); font-size:12px; text-align:left; }
+  .mapRow span:first-child { color:#b3bac8; }
+  .mapRow b { color:#f0e6d2; text-align:right; }
+  .mapRow b.pos { color:#8fd97a; } .mapRow b.neg { color:#ff8a7a; }
+  .mapRow.sub { padding:2px 0 2px 14px; border-bottom:none; font-size:10.5px; color:#8f97a8; }
+  .mapRow.sub b { color:#a8b0c0; font-weight:500; }
+  .mapSect { margin:13px 0 3px; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#c8a44f; text-align:left; border-bottom:1px solid rgba(230,184,76,.3); padding-bottom:4px; }
+  .ceqaTag { display:inline-block; padding:2px 8px; border-radius:20px; font-size:10.5px; font-weight:700; }
+  .ceqaTag.ex { background:#2c4a2f; color:#9fd48a; }
+  .ceqaTag.mnd { background:#4a432c; color:#e0cf7a; }
+  .ceqaTag.eir { background:#4a2c2c; color:#ff8a7a; }
+  .modalBtns { display:flex; gap:9px; margin-top:15px; }
+  .modalBtns button { flex:1; border-radius:9px; padding:11px; cursor:pointer; font-size:13px; font-weight:700; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.07); color:#d8d0bd; }
+  .modalBtns button.go { background:linear-gradient(180deg,#e6b84c,#c99a2e); color:#241b05; border:none; }
+  .mapItem { background:rgba(255,255,255,.05); border-radius:9px; padding:9px 11px; margin-bottom:8px; border-left:3px solid #ff9a3c; }
+  .mapItem .t { font-weight:700; font-size:12px; }
+  .mapItem .d { font-size:10.5px; color:#a8b0c0; }
+  .mapItem .bar { height:6px; background:rgba(255,255,255,.12); border-radius:4px; overflow:hidden; margin-top:5px; }
+  .mapItem .bar i { display:block; height:100%; background:linear-gradient(90deg,#e6913c,#f0c26a); }
+  .zonePick { display:flex; gap:5px; margin:8px 0 2px; }
+  .zonePick button { flex:1; border-radius:8px; padding:8px 4px; cursor:pointer; font-size:11px; font-weight:700;
+    border:1px solid rgba(255,255,255,.18); background:rgba(255,255,255,.05); color:#c8c0ad; }
+  .zonePick button.on { border-color:#e6b84c; background:rgba(230,184,76,.22); color:#f5e8c8; }
+  #subHint { position:absolute; top:60px; left:50%; transform:translateX(-50%); z-index:11; display:none;
+    background:rgba(12,17,28,.9); border:1px solid rgba(255,154,60,.6); border-radius:9px; padding:7px 14px; font-size:11.5px; color:#f0e0cc; }
+  #subHint b { color:#ff9a3c; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="photoExit">📷 Exit photo mode (Esc)</button>
+
+<div id="topbar" class="hud">
+  <div id="cityName">Golden State<small>California</small></div>
+  <div class="stat"><span class="lbl">Funds</span><span class="val" id="sMoney">$0</span></div>
+  <div class="stat"><span class="lbl">Population</span><span class="val" id="sPop">0</span></div>
+  <div class="stat"><span class="lbl">Jobs</span><span class="val" id="sJobs">0</span></div>
+  <div class="stat"><span class="lbl">Approval</span><span class="val" id="sAppr">—</span></div>
+  <div class="stat"><span class="lbl">Demand</span>
+    <div id="demandBars">
+      <div class="dbar" id="dR"><i></i><span>R</span></div>
+      <div class="dbar" id="dC"><i></i><span>C</span></div>
+      <div class="dbar" id="dI"><i></i><span>I</span></div>
+    </div>
+  </div>
+  <div class="stat"><span class="lbl">Water</span><span class="val" id="sWater">0/0</span></div>
+  <div class="stat"><span class="lbl">Power</span><span class="val" id="sPower">0/0</span></div>
+  <div class="stat"><span class="lbl">Date</span><span class="val" id="sDate">—</span></div>
+  <div id="fireRisk">🔥 Low</div>
+  <button id="incorporateBtn">🏛 Incorporate!</button>
+  <div id="spacer"></div>
+  <button class="miniBtn" id="saveBtn" title="Save city to file">💾</button>
+  <button class="miniBtn" id="loadBtn" title="Load city from file">📂</button>
+  <button class="miniBtn" id="photoBtn" title="Photo mode">📷</button>
+  <button class="speedBtn" data-sp="0">⏸</button>
+  <button class="speedBtn active" data-sp="1">▶</button>
+  <button class="speedBtn" data-sp="2">▶▶</button>
+  <button class="speedBtn" data-sp="3">▶▶▶</button>
+  <button class="panelBtn" data-panel="budget">💰</button>
+  <button class="panelBtn" data-panel="laws">⚖️</button>
+  <button class="panelBtn" data-panel="planning">📐<span id="mapBadge">0</span></button>
+  <button class="panelBtn" data-panel="advisor">📋<span id="noteBadge">0</span></button>
+</div>
+
+<div id="toolbar" class="hud"></div>
+
+<div id="ovlBar" class="hud">
+  <div class="row">
+    <button class="ovlBtn active" data-ovl="none">Overlay: Off</button>
+    <button class="ovlBtn" data-ovl="value">💰 Land Value</button>
+    <button class="ovlBtn" data-ovl="traffic">🚗 Traffic</button>
+  </div>
+  <div id="ctrlHint">🖱 drag: pan · right-drag: rotate · scroll: zoom · WASD pan · Esc: select</div>
+</div>
+
+<div id="subHint" class="hud"></div>
+<div id="sidepanel" class="hud"><h2 id="panelTitle"></h2><div id="panelBody"></div></div>
+<div id="toasts" class="hud"></div>
+<div id="tooltip"></div>
+<div id="rectLabel"></div>
+<input type="file" id="loadInput" accept=".json,application/json" style="display:none">
+
+<div class="overlay" id="startOverlay">
+  <div class="modal">
+    <h1>Golden State Builder</h1>
+    <h3>Volume 3 · Choose your California</h3>
+    <p style="text-align:center">Four regions, four very different fights with geography. Build a road out to raw land, subdivide it under the <b>Subdivision Map Act</b>, and let the tract fill in. Prop 13, CEQA and RHNA apply everywhere — fire, quakes, floods and drought do not.</p>
+    <div id="mapGrid"></div>
+    <button id="loadStartBtn">📂 Resume a saved city</button>
+  </div>
+</div>
+
+<div class="overlay" id="mapModal" style="display:none">
+  <div class="modal map">
+    <h1 id="mmTitle">📐 Tentative Tract Map</h1>
+    <h3>Subdivision Map Act · Gov. Code §66410</h3>
+    <div id="mmBody"></div>
+    <div class="modalBtns">
+      <button id="mmCancel">Withdraw</button>
+      <button class="go" id="mmSubmit">Submit to Planning</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="incModal" style="display:none">
+  <div class="modal">
+    <h1>🏛 Incorporation</h1>
+    <h3>LAFCO has approved your petition</h3>
+    <p>Your community passed 500 residents and the county LAFCO has approved cityhood. You gain your 1% Bradley-Burns sales-tax share and a bigger slice of the Prop 13 property tax — and the state's <b>RHNA housing mandate</b> now has your name on it.</p>
+    <input type="text" id="cityNameInput" maxlength="24" placeholder="Name your city…">
+    <button class="bigbtn" id="incConfirmBtn">Incorporate</button>
+  </div>
+</div>
+
+<div class="overlay" id="recallModal" style="display:none">
+  <div class="modal">
+    <h1 id="recallTitle">🗳 Recalled!</h1>
+    <h3 id="recallSub">The voters have spoken</h3>
+    <p id="recallText"></p>
+    <div class="statGrid" id="recallStats"></div>
+    <button class="bigbtn" id="recallContinueBtn">Take office as the new mayor</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+/* ============================================================
+   GOLDEN STATE BUILDER 2 — core engine & California regions
+   ============================================================ */
+'use strict';
+
+// ---------- helpers ----------
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smooth=(a,b,t)=>{ t=clamp((t-a)/(b-a),0,1); return t*t*(3-2*t); };
+function hash2(x,y){ const s=Math.sin(x*127.1+y*311.7)*43758.5453; return s-Math.floor(s); }
+function vnoise(x,y){
+  const xi=Math.floor(x), yi=Math.floor(y), xf=x-xi, yf=y-yi;
+  const a=hash2(xi,yi), b=hash2(xi+1,yi), c=hash2(xi,yi+1), d=hash2(xi+1,yi+1);
+  const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
+  return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v;
+}
+function fbm(x,y){ let t=0,amp=1,f=1,n=0; for(let i=0;i<5;i++){ t+=amp*vnoise(x*f,y*f); n+=amp; amp*=.5; f*=2; } return t/n; }
+function mulberry32(seed){ return function(){ seed|=0; seed=seed+0x6D2B79F5|0; let t=Math.imul(seed^seed>>>15,1|seed); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+const fmt$=n=>'$'+Math.round(n).toLocaleString('en-US');
+const fmtN=n=>Math.round(n).toLocaleString('en-US');
+
+// ---------- world constants ----------
+const G=90, CELL=4, WORLD=620, HALF=G*CELL/2;
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// ---------- California regions ----------
+const MAPS={
+  foothills:{
+    name:'Dry Creek Valley', county:'El Dorado County', seed:11,
+    desc:'Oak-studded Sierra foothills with a year-round river. Golden summers, green winters.',
+    hazards:'🔥 High fire · 🫨 Quakes · 🏜 Drought · ❄️ Winter snow up high',
+    thumb:'linear-gradient(120deg,#8a9c4a,#c4a24e 60%,#5f8c38)',
+    green:[0.78,0.9,1.0,0.92,0.62,0.34,0.18,0.12,0.10,0.14,0.32,0.58],
+    hasRiver:true, hasOcean:false, treeDensity:1.0, treeStyle:'oak',
+    wellOut:350, solarMul:1.0, fireMul:1.0, quakeMul:1.0, droughtP:0.25, floodP:0,
+    snowline:24, waterY:-0.15, ceqaWaterLabel:'riparian corridor',
+    pal:{gold:0xb0904c,green:0x5f8c38,dark:0x4e6e34,rock:0x8b8377,chap:0x71713f,sand:0xcbb98a}, fields:false,
+    riverX:z=>52*Math.sin(z*0.006+1.2)+26*Math.sin(z*0.017+4.0)+30,
+    terrain(x,z){
+      let h=fbm(x*0.0062+7,z*0.0062+3);
+      h=Math.pow(h,1.35)*52-7;
+      h+=(fbm(x*0.021+21,z*0.021+9)-0.5)*7;
+      const d=Math.sqrt(x*x*0.72+z*z)/305;
+      const mask=smooth(0.30,1.05,d);
+      const floor=3.4+(fbm(x*0.03+2,z*0.03+5)-0.5)*2.0;
+      h=lerp(floor,h,Math.min(1,mask+0.05));
+      const dr=Math.abs(x-this.riverX(z));
+      h-=11*Math.exp(-(dr*dr)/(2*13*13));
+      return h;
+    },
+    nearWater(x,z){ return Math.abs(x-this.riverX(z))<26; },
+  },
+  valley:{
+    name:'Tule Flats', county:'San Joaquin County', seed:23,
+    desc:'Dead-flat Central Valley farmland along an irrigation canal. Cheap to build, hot, and thirsty.',
+    hazards:'🌊 Winter floods · 🏜 Deep droughts · 🔥 Low fire · 🫨 Mild quakes',
+    thumb:'linear-gradient(120deg,#c2a55a,#4f8a34 55%,#c2a55a)',
+    green:[0.85,0.95,1.0,0.9,0.7,0.5,0.42,0.4,0.38,0.4,0.55,0.7],
+    hasRiver:true, hasOcean:false, treeDensity:0.22, treeStyle:'valleyOak',
+    wellOut:430, solarMul:1.15, fireMul:0.45, quakeMul:0.5, droughtP:0.35, floodP:0.30,
+    snowline:0, waterY:-0.15, ceqaWaterLabel:'canal & wetland buffer',
+    pal:{gold:0xbaa058,green:0x4f8a34,dark:0x3f7a2c,rock:0x9a8f78,chap:0x8a8a52,sand:0xc9b98c}, fields:true,
+    riverX:z=>-60+7*Math.sin(z*0.01)+3*Math.sin(z*0.04),
+    terrain(x,z){
+      let h=2.1+(fbm(x*0.01+3,z*0.01+6)-0.5)*1.5+(fbm(x*0.045+9,z*0.045+2)-0.5)*0.5;
+      const r=Math.max(Math.abs(x),Math.abs(z));
+      h+=smooth(245,330,r)*(6+fbm(x*0.01,z*0.01)*8);
+      const dr=Math.abs(x-this.riverX(z));
+      h-=6.5*Math.exp(-(dr*dr)/(2*8*8));
+      return h;
+    },
+    nearWater(x,z){ return Math.abs(x-this.riverX(z))<20; },
+  },
+  coast:{
+    name:'Punta Gaviota', county:'San Luis Obispo County', seed:7,
+    desc:'Marine terraces above the Pacific. Mild, green, gorgeous — and the fault line is close.',
+    hazards:'🫨 Major quake risk · 🌫 Marine layer · 🏛 Coastal Commission review · 🔥 Low fire',
+    thumb:'linear-gradient(120deg,#2e7396,#d8c9a0 45%,#4e7d3c)',
+    green:[0.85,0.92,1.0,0.95,0.8,0.6,0.45,0.4,0.38,0.45,0.6,0.75],
+    hasRiver:false, hasOcean:true, treeDensity:0.6, treeStyle:'cypress',
+    wellOut:300, solarMul:0.85, fireMul:0.55, quakeMul:2.3, droughtP:0.18, floodP:0,
+    snowline:0, waterY:0.0, ceqaWaterLabel:'coastal zone (Coastal Commission)',
+    pal:{gold:0xa8a06a,green:0x4e7d3c,dark:0x3e6a34,rock:0x7d7a72,chap:0x6a7a48,sand:0xd8c9a0}, fields:false,
+    shoreX(z){ return -128+24*Math.sin(z*0.008)+11*Math.sin(z*0.021+2); },
+    riverX(){ return 1e9; },
+    terrain(x,z){
+      const sx=x-this.shoreX(z);
+      const shore=smooth(-36,22,sx);
+      let h=lerp(-9,5.5+(fbm(x*0.02+3,z*0.02+8)-0.5)*2.4,shore);
+      h+=smooth(110,300,sx)*Math.pow(fbm(x*0.006+9,z*0.006+2),1.3)*42;
+      h+=smooth(30,110,sx)*(fbm(x*0.03+4,z*0.03+7)-0.5)*3;
+      return h;
+    },
+    nearWater(x,z){ return x-this.shoreX(z)<34; },
+  },
+  desert:{
+    name:'Yucca Wash', county:'San Bernardino County', seed:41,
+    desc:'High Mojave desert. Endless sun, scarce groundwater, land as far as you can see.',
+    hazards:'☀️ Solar bonus · 💧 Scarce water · 🫨 Quakes · 🔥 Sparse fuel, low fire',
+    thumb:'linear-gradient(120deg,#c5a06b,#d8bc8a 55%,#9c7a58)',
+    green:[0.22,0.3,0.32,0.2,0.1,0.05,0.03,0.03,0.03,0.05,0.1,0.16],
+    hasRiver:false, hasOcean:false, treeDensity:0.14, treeStyle:'joshua',
+    wellOut:180, solarMul:1.6, fireMul:0.35, quakeMul:1.4, droughtP:0.5, floodP:0,
+    snowline:0, waterY:-99, ceqaWaterLabel:'desert wash habitat',
+    pal:{gold:0xc5a06b,green:0x8a9464,dark:0x7a8456,rock:0x9c7a58,chap:0x9a8560,sand:0xd8bc8a}, fields:false,
+    washX(z){ return 40*Math.sin(z*0.005)+10*Math.sin(z*0.02); },
+    riverX(){ return 1e9; },
+    terrain(x,z){
+      let h=4.5+(fbm(x*0.008+5,z*0.008+1)-0.5)*9+(fbm(x*0.03+2,z*0.03+9)-0.5)*1.4;
+      const r=Math.max(Math.abs(x),Math.abs(z));
+      h+=smooth(240,330,r)*(14+fbm(x*0.008+8,z*0.008+3)*18);
+      const dr=Math.abs(x-this.washX(z));
+      h-=2.4*Math.exp(-(dr*dr)/(2*10*10));
+      return Math.max(h,1.0);
+    },
+    nearWater(x,z){ return Math.abs(x-this.washX(z))<10; },
+  },
+};
+let MAP=MAPS.foothills;
+
+function baseH(x,z){ return MAP.terrain(x,z); }
+function cellCenter(i,j){ return { x:(i-G/2+0.5)*CELL, z:(j-G/2+0.5)*CELL }; }
+function cellH(i,j){ const c=cellCenter(i,j); return baseH(c.x,c.z); }
+function cellIsWater(i,j){ const c=cellCenter(i,j); return baseH(c.x,c.z)<MAP.waterY+0.4&&MAP.waterY>-50; }
+function cellBuildable(i,j){
+  if(i<0||j<0||i>=G||j>=G) return false;
+  const c=cellCenter(i,j), h=baseH(c.x,c.z);
+  if(h<MAP.waterY+0.7||h>30) return false;
+  const s=CELL/2;
+  const hs=[baseH(c.x-s,c.z-s),baseH(c.x+s,c.z-s),baseH(c.x-s,c.z+s),baseH(c.x+s,c.z+s)];
+  if(Math.max(...hs)-Math.min(...hs)>2.6) return false;
+  return true;
+}
+// bridge: flat-enough water cell
+function cellBridgeable(i,j){
+  if(i<0||j<0||i>=G||j>=G) return false;
+  if(!cellIsWater(i,j)) return false;
+  const c=cellCenter(i,j);
+  return baseH(c.x,c.z)>MAP.waterY-8;
+}
+function nearWaterCell(i,j){ const c=cellCenter(i,j); return MAP.nearWater(c.x,c.z); }
+
+// ---------- three.js setup ----------
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(innerWidth,innerHeight);
+renderer.shadowMap.enabled=true;
+renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+
+const scene=new THREE.Scene();
+scene.fog=new THREE.Fog(0x9fd4f0,380,1000);
+const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,2400);
+
+const hemi=new THREE.HemisphereLight(0xbfd9ec,0x8a7a55,0.55); scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xfff2d8,1.0);
+sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048);
+sun.shadow.camera.left=-240; sun.shadow.camera.right=240;
+sun.shadow.camera.top=240; sun.shadow.camera.bottom=-240;
+sun.shadow.camera.far=1200; sun.shadow.bias=-0.0006;
+scene.add(sun); scene.add(sun.target);
+
+// groups: world (terrain/trees), city (player stuff), fx
+let worldG=new THREE.Group(), cityG=new THREE.Group(), fxG=new THREE.Group(), carG=new THREE.Group();
+scene.add(worldG,cityG,fxG,carG);
+
+// ---------- world build (per map) ----------
+const SEG=210;
+let terrain=null, terrGeo=null, vData=null, tCol=null, waterMat=null, waterMesh=null;
+let trees=[], treeByCell={}, trunkIM=null, canopyIM=null;
+let overlayMesh=null, overlayTex=null, overlayCtx=null;
+const _c=new THREE.Color(), _m=new THREE.Matrix4(), _q=new THREE.Quaternion(), _s=new THREE.Vector3(), _p=new THREE.Vector3();
+
+function buildWorld(){
+  // clear old
+  scene.remove(worldG); worldG=new THREE.Group(); scene.add(worldG);
+  trees=[]; treeByCell={};
+
+  terrGeo=new THREE.PlaneGeometry(WORLD,WORLD,SEG,SEG);
+  terrGeo.rotateX(-Math.PI/2);
+  const tPos=terrGeo.attributes.position;
+  const vCount=tPos.count;
+  vData=new Float32Array(vCount*3);
+  for(let k=0;k<vCount;k++){
+    const x=tPos.getX(k), z=tPos.getZ(k);
+    const h=baseH(x,z);
+    tPos.setY(k,h);
+    const e=1.6;
+    const dx=(baseH(x+e,z)-baseH(x-e,z))/(2*e), dz=(baseH(x,z+e)-baseH(x,z-e))/(2*e);
+    const slope=Math.sqrt(dx*dx+dz*dz);
+    let moist;
+    if(MAP.hasOcean){ moist=0.35+fbm(x*0.013+50,z*0.013+80)*0.4; }
+    else if(MAP.hasRiver){ const dr=Math.abs(x-MAP.riverX(z)); moist=Math.exp(-(dr*dr)/(2*30*30))*0.75+fbm(x*0.013+50,z*0.013+80)*0.35; }
+    else { const dr=Math.abs(x-MAP.washX(z)); moist=Math.exp(-(dr*dr)/(2*20*20))*0.4+fbm(x*0.013+50,z*0.013+80)*0.25; }
+    vData[k*3]=h; vData[k*3+1]=slope; vData[k*3+2]=moist;
+  }
+  terrGeo.computeVertexNormals();
+  tCol=new Float32Array(vCount*3);
+  terrGeo.setAttribute('color',new THREE.BufferAttribute(tCol,3));
+  terrain=new THREE.Mesh(terrGeo,new THREE.MeshLambertMaterial({vertexColors:true}));
+  terrain.receiveShadow=true;
+  worldG.add(terrain);
+  paintTerrain(MAP.green[2],2);
+
+  // water
+  if(MAP.waterY>-50){
+    waterMat=new THREE.MeshLambertMaterial({color:MAP.hasOcean?0x27607e:0x2e7396,transparent:true,opacity:0.85});
+    waterMesh=new THREE.Mesh(new THREE.PlaneGeometry(WORLD,WORLD).rotateX(-Math.PI/2),waterMat);
+    waterMesh.position.y=MAP.waterY;
+    worldG.add(waterMesh);
+  } else { waterMat=null; waterMesh=null; }
+
+  buildTrees();
+  buildOverlayMesh();
+}
+
+function paintTerrain(greenness,month){
+  const P=MAP.pal;
+  const C_GOLD=new THREE.Color(P.gold), C_GREEN=new THREE.Color(P.green), C_DARK=new THREE.Color(P.dark),
+        C_ROCK=new THREE.Color(P.rock), C_CHAP=new THREE.Color(P.chap), C_SAND=new THREE.Color(P.sand),
+        C_SNOW=new THREE.Color(0xe8ecf0);
+  const tPos=terrGeo.attributes.position, vCount=tPos.count;
+  const winter=(month===11||month<=1);
+  for(let k=0;k<vCount;k++){
+    const h=vData[k*3], slope=vData[k*3+1], moist=vData[k*3+2];
+    const g=clamp(greenness*(0.35+0.85*moist),0,1);
+    _c.copy(C_GOLD).lerp(moist>0.55?C_DARK:C_GREEN,g);
+    if(MAP.fields){
+      const x=tPos.getX(k), z=tPos.getZ(k);
+      if(Math.abs(x)<240&&Math.abs(z)<240){
+        const f=hash2(Math.floor((x+300)/30),Math.floor((z+300)/30));
+        _c.lerp(f>0.6?C_GREEN:f>0.3?C_GOLD:C_DARK,0.35);
+        _c.multiplyScalar(0.95+f*0.1);
+      }
+    }
+    if(h>24) _c.lerp(C_CHAP,smooth(24,40,h)*0.8);
+    if(slope>0.55) _c.lerp(C_ROCK,smooth(0.55,1.15,slope)*0.85);
+    if(h<MAP.waterY+0.9&&MAP.waterY>-50) _c.lerp(C_SAND,smooth(MAP.waterY+0.9,MAP.waterY-0.4,h));
+    if(MAP.snowline>0&&winter&&h>MAP.snowline) _c.lerp(C_SNOW,smooth(MAP.snowline,MAP.snowline+9,h)*0.85);
+    const n=(hash2(k,7)-0.5)*0.045;
+    tCol[k*3]=_c.r+n; tCol[k*3+1]=_c.g+n; tCol[k*3+2]=_c.b+n;
+  }
+  terrGeo.attributes.color.needsUpdate=true;
+}
+
+// ---------- trees ----------
+function buildTrees(){
+  const styles={
+    oak:{trunk:[0.35,0.55,2.6],canopy:'sphere',cr:2.4,cf:0.78,tc:0x5d4a30,cc:0x44582a,ch:3.4},
+    valleyOak:{trunk:[0.4,0.6,3.0],canopy:'sphere',cr:2.9,cf:0.7,tc:0x5d4a30,cc:0x4a6030,ch:3.9},
+    cypress:{trunk:[0.28,0.45,2.2],canopy:'cone',cr:1.7,cf:1,tc:0x4a3c28,cc:0x2e5230,ch:4.6},
+    joshua:{trunk:[0.22,0.34,2.4],canopy:'sphere',cr:0.95,cf:0.9,tc:0x7a6a4a,cc:0x8fa06a,ch:2.9},
+  };
+  const st=styles[MAP.treeStyle];
+  const N=Math.round(1100*MAP.treeDensity);
+  const trunkGeo=new THREE.CylinderGeometry(st.trunk[0],st.trunk[1],st.trunk[2],5);
+  let canopyGeo;
+  if(st.canopy==='cone') canopyGeo=new THREE.ConeGeometry(st.cr,st.cr*2.4,7);
+  else { canopyGeo=new THREE.SphereGeometry(st.cr,7,6); canopyGeo.scale(1,st.cf,1); }
+  trunkIM=new THREE.InstancedMesh(trunkGeo,new THREE.MeshLambertMaterial({color:st.tc}),Math.max(N,1));
+  canopyIM=new THREE.InstancedMesh(canopyGeo,new THREE.MeshLambertMaterial({color:st.cc}),Math.max(N,1));
+  trunkIM.castShadow=canopyIM.castShadow=true;
+  const rng=mulberry32(MAP.seed*7919+13);
+  let placed=0, tries=0;
+  while(placed<N && tries<N*50){
+    tries++;
+    const x=(rng()-0.5)*WORLD*0.94, z=(rng()-0.5)*WORLD*0.94;
+    const h=baseH(x,z);
+    if(h<Math.max(MAP.waterY+1.2,1.0)||h>34) continue;
+    const moist=(()=>{
+      if(MAP.hasRiver){ const dr=Math.abs(x-MAP.riverX(z)); if(dr<8) return -1; return Math.exp(-(dr*dr)/(2*34*34))*0.8+fbm(x*0.013+50,z*0.013+80)*0.4; }
+      if(MAP.hasOcean){ if(MAP.nearWater(x,z)&&h<2) return -1; return 0.3+fbm(x*0.013+50,z*0.013+80)*0.45; }
+      return 0.3+fbm(x*0.013+50,z*0.013+80)*0.35;
+    })();
+    if(moist<0) continue;
+    if(rng()>moist*0.85+0.12) continue;
+    const sc=0.75+rng()*0.85;
+    const i=Math.floor(x/CELL+G/2), j=Math.floor(z/CELL+G/2);
+    const key=(i>=0&&j>=0&&i<G&&j<G)?i+','+j:null;
+    trees.push({x,z,h,sc,cell:key,alive:true,idx:placed});
+    if(key){ (treeByCell[key]=treeByCell[key]||[]).push(placed); }
+    _q.setFromAxisAngle(new THREE.Vector3(0,1,0),rng()*6.28);
+    _m.compose(_p.set(x,h+st.trunk[2]*0.45*sc,z),_q,_s.set(sc,sc,sc)); trunkIM.setMatrixAt(placed,_m);
+    _m.compose(_p.set(x,h+st.ch*sc,z),_q,_s.set(sc,sc,sc)); canopyIM.setMatrixAt(placed,_m);
+    placed++;
+  }
+  trunkIM.count=canopyIM.count=placed;
+  worldG.add(trunkIM,canopyIM);
+}
+function removeTree(idx){
+  const t=trees[idx]; if(!t||!t.alive) return;
+  t.alive=false;
+  _m.compose(_p.set(0,-500,0),_q.identity(),_s.set(0.001,0.001,0.001));
+  trunkIM.setMatrixAt(idx,_m); canopyIM.setMatrixAt(idx,_m);
+  trunkIM.instanceMatrix.needsUpdate=canopyIM.instanceMatrix.needsUpdate=true;
+}
+function clearTreesOnCell(i,j){ (treeByCell[i+','+j]||[]).forEach(removeTree); }
+
+// ---------- data overlay (land value / traffic) ----------
+function buildOverlayMesh(){
+  overlayTex=(()=>{ const cv=document.createElement('canvas'); cv.width=cv.height=G;
+    overlayCtx=cv.getContext('2d'); overlayCtx.clearRect(0,0,G,G);
+    const t=new THREE.CanvasTexture(cv); t.magFilter=THREE.NearestFilter; return t; })();
+  const gSeg=G*2;
+  const og=new THREE.PlaneGeometry(G*CELL,G*CELL,gSeg,gSeg).rotateX(-Math.PI/2);
+  const op=og.attributes.position;
+  for(let k=0;k<op.count;k++) op.setY(k,baseH(op.getX(k),op.getZ(k))+0.32);
+  overlayMesh=new THREE.Mesh(og,new THREE.MeshBasicMaterial({map:overlayTex,transparent:true,opacity:0.55,depthWrite:false}));
+  overlayMesh.visible=false;
+  worldG.add(overlayMesh);
+}
+
+// ---------- clouds ----------
+const cloudTex=(()=>{ const cv=document.createElement('canvas'); cv.width=cv.height=128;
+  const g=cv.getContext('2d'); const gr=g.createRadialGradient(64,64,8,64,64,60);
+  gr.addColorStop(0,'rgba(255,255,255,.95)'); gr.addColorStop(0.6,'rgba(255,255,255,.5)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=gr; g.fillRect(0,0,128,128); return new THREE.CanvasTexture(cv); })();
+const clouds=[];
+for(let i=0;i<11;i++){
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:cloudTex,transparent:true,opacity:0.55+Math.random()*0.3,depthWrite:false}));
+  const s=70+Math.random()*90; sp.scale.set(s,s*0.42,1);
+  sp.position.set((Math.random()-0.5)*1300,120+Math.random()*70,(Math.random()-0.5)*1300);
+  clouds.push(sp); scene.add(sp);
+}
+
+// ---------- rain ----------
+const RAIN_N=1400;
+const rainGeo=new THREE.BufferGeometry();
+const rainPos=new Float32Array(RAIN_N*3);
+for(let i=0;i<RAIN_N;i++){ rainPos[i*3]=(Math.random()-0.5)*500; rainPos[i*3+1]=Math.random()*160; rainPos[i*3+2]=(Math.random()-0.5)*500; }
+rainGeo.setAttribute('position',new THREE.BufferAttribute(rainPos,3));
+const rain=new THREE.Points(rainGeo,new THREE.PointsMaterial({color:0x9fc4e0,size:0.45,transparent:true,opacity:0.4}));
+rain.visible=false; scene.add(rain);
+
+// ---------- birds ----------
+const birdTex=(()=>{ const cv=document.createElement('canvas'); cv.width=64; cv.height=32; const g=cv.getContext('2d');
+  g.strokeStyle='rgba(30,30,34,0.9)'; g.lineWidth=4; g.lineCap='round';
+  g.beginPath(); g.moveTo(8,22); g.quadraticCurveTo(20,8,32,18); g.quadraticCurveTo(44,8,56,22); g.stroke();
+  return new THREE.CanvasTexture(cv); })();
+const birds=[];
+function buildBirds(){
+  birds.forEach(b=>scene.remove(b.sp)); birds.length=0;
+  const n=MAP.hasOcean?9:4;
+  for(let i=0;i<n;i++){
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:birdTex,transparent:true,depthWrite:false}));
+    sp.scale.set(4,2,1);
+    const cx=(Math.random()-0.5)*300-(MAP.hasOcean?100:0), cz=(Math.random()-0.5)*300;
+    birds.push({sp,cx,cz,r:20+Math.random()*40,a:Math.random()*6.28,sp2:0.2+Math.random()*0.3,y:40+Math.random()*40});
+    scene.add(sp);
+  }
+}
+function birdTick(dt){
+  birds.forEach(b=>{
+    b.a+=dt*b.sp2;
+    b.sp.position.set(b.cx+Math.cos(b.a)*b.r,b.y+Math.sin(b.a*2.3)*3,b.cz+Math.sin(b.a)*b.r);
+  });
+}
+
+// ---------- sky / day-night ----------
+const SKY_DAY=new THREE.Color(0x96cded), SKY_NIGHT=new THREE.Color(0x0b1428), SKY_DUSK=new THREE.Color(0xe89a5e);
+let tod=9.5;
+function updateSky(dt,speed){
+  tod=(tod+dt*(speed===0?0.02:0.28))%24;
+  const ang=(tod/24)*Math.PI*2-Math.PI/2;
+  const sh=Math.sin(ang);
+  sun.position.set(Math.cos(ang)*420,Math.max(sh,0.02)*420+8,140);
+  sun.intensity=clamp(sh*1.2,0,0.92)+0.05;
+  hemi.intensity=clamp(sh,0,1)*0.4+0.15;
+  const duskAmt=clamp(1-Math.abs(sh)*4,0,1);
+  _c.copy(SKY_NIGHT).lerp(SKY_DAY,clamp(sh*2.4+0.15,0,1)).lerp(SKY_DUSK,duskAmt*0.55);
+  // marine layer: coast mornings look grayer
+  if(MAP.hasOcean&&tod>6&&tod<11) _c.lerp(new THREE.Color(0xb8c2c8),0.35);
+  renderer.setClearColor(_c);
+  scene.fog.color.copy(_c);
+  scene.fog.near=MAP.hasOcean&&tod>6&&tod<11?220:380;
+  const night=clamp(1-sh*4,0,1);
+  emissiveMats.forEach(m=>m.emissiveIntensity=0.12+night*0.85);
+  if(waterMat) waterMat.color.setHex(MAP.hasOcean?0x27607e:0x2e7396).lerp(new THREE.Color(0x0e2438),night*0.8);
+  if(lightMat) lightMat.emissiveIntensity=night>0.4?1.6:0.0;
+  return night;
+}
+
+// ---------- camera ----------
+let camTarget=new THREE.Vector3(10,3,10), camYaw=0.7, camPitch=0.86, camDist=190;
+function applyCam(){
+  camera.position.set(
+    camTarget.x+Math.sin(camYaw)*Math.cos(camPitch)*camDist,
+    camTarget.y+Math.sin(camPitch)*camDist,
+    camTarget.z+Math.cos(camYaw)*Math.cos(camPitch)*camDist);
+  camera.lookAt(camTarget);
+}
+applyCam();
+let shakeAmt=0, photoMode=false;
+const keys={};
+addEventListener('keydown',e=>{ keys[e.key.toLowerCase()]=true; if(e.key==='Escape'){ if(photoMode) togglePhoto(false); else setTool('select'); } });
+addEventListener('keyup',e=>{ keys[e.key.toLowerCase()]=false; });
+function camTick(dt){
+  if(photoMode){ camYaw+=dt*0.05; applyCam(); return; }
+  const sp=camDist*0.9*dt;
+  const fx=Math.sin(camYaw), fz=Math.cos(camYaw);
+  if(keys['w']||keys['arrowup']){ camTarget.x-=fx*sp; camTarget.z-=fz*sp; }
+  if(keys['s']||keys['arrowdown']){ camTarget.x+=fx*sp; camTarget.z+=fz*sp; }
+  if(keys['a']||keys['arrowleft']){ camTarget.x-=fz*sp; camTarget.z+=fx*sp; }
+  if(keys['d']||keys['arrowright']){ camTarget.x+=fz*sp; camTarget.z-=fx*sp; }
+  camTarget.x=clamp(camTarget.x,-HALF-80,HALF+80);
+  camTarget.z=clamp(camTarget.z,-HALF-80,HALF+80);
+  applyCam();
+  if(shakeAmt>0.001){
+    camera.position.x+=(Math.random()-0.5)*shakeAmt;
+    camera.position.y+=(Math.random()-0.5)*shakeAmt;
+    camera.position.z+=(Math.random()-0.5)*shakeAmt;
+    shakeAmt*=Math.pow(0.05,dt);
+  }
+}
+addEventListener('wheel',e=>{ camDist=clamp(camDist*(1+Math.sign(e.deltaY)*0.09),36,560); applyCam(); },{passive:true});
+addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+
+// ---------- picking ----------
+const ray=new THREE.Raycaster(), mouseNDC=new THREE.Vector2();
+function pickGround(cx,cy){
+  if(!terrain) return null;
+  mouseNDC.set((cx/innerWidth)*2-1,-(cy/innerHeight)*2+1);
+  ray.setFromCamera(mouseNDC,camera);
+  const hit=ray.intersectObject(terrain)[0];
+  if(!hit) return null;
+  const i=Math.floor(hit.point.x/CELL+G/2), j=Math.floor(hit.point.z/CELL+G/2);
+  if(i<0||j<0||i>=G||j>=G) return null;
+  return {i,j,point:hit.point};
+}
+/* ============================================================
+   Construction systems: buildings w/ variants, roads/avenues/bridges,
+   street lights, cars, pedestrians, fire FX
+   ============================================================ */
+
+const emissiveMats=[];
+let lightMat=null;
+
+// ---------- materials ----------
+function windowTexture(base,lit){
+  const cv=document.createElement('canvas'); cv.width=64; cv.height=96;
+  const g=cv.getContext('2d');
+  g.fillStyle=base; g.fillRect(0,0,64,96);
+  for(let y=6;y<90;y+=12) for(let x=5;x<58;x+=11){
+    g.fillStyle=Math.random()<0.62?lit:'rgba(20,26,38,0.9)';
+    g.fillRect(x,y,7,8);
+  }
+  return new THREE.CanvasTexture(cv);
+}
+function litMat(color,base,lit){
+  const m=new THREE.MeshLambertMaterial({color,map:windowTexture(base,lit),emissiveMap:windowTexture(base,lit),emissive:0xffdd88,emissiveIntensity:0.2});
+  emissiveMats.push(m); return m;
+}
+const M={
+  stucco:[0xd9c9a8,0xcfae8e,0xd8d2c2,0xbfae90,0xc9b8d0,0xb8c4a8].map(c=>new THREE.MeshLambertMaterial({color:c})),
+  roof:[0x8a4f3a,0x76503e,0x6b6560,0x54585e].map(c=>new THREE.MeshLambertMaterial({color:c})),
+  apt:litMat(0xcfc4ae,'#8d8674','#ffe9a8'),
+  apt2:litMat(0xb8a890,'#7a705e','#ffd890'),
+  office:litMat(0x9fb8c8,'#41576b','#cfe6ff'),
+  office2:litMat(0x8aa8b8,'#38505f','#bfe0ff'),
+  shop:litMat(0xc8b89a,'#7a6f58','#ffe0a0'),
+  awning:[0xc0392b,0x2980b9,0x27ae60,0xd68910,0x8e44ad].map(c=>new THREE.MeshLambertMaterial({color:c})),
+  ind:new THREE.MeshLambertMaterial({color:0x9aa0a6}),
+  indDark:new THREE.MeshLambertMaterial({color:0x6d7278}),
+  concrete:new THREE.MeshLambertMaterial({color:0xb9b3a6}),
+  asphalt:new THREE.MeshLambertMaterial({color:0x3c3c40}),
+  aveAsphalt:new THREE.MeshLambertMaterial({color:0x35353a}),
+  fireRed:new THREE.MeshLambertMaterial({color:0xb03a30}),
+  navy:new THREE.MeshLambertMaterial({color:0x33506e}),
+  tan:new THREE.MeshLambertMaterial({color:0xd8c9a0}),
+  white:new THREE.MeshLambertMaterial({color:0xeae6da}),
+  gold:new THREE.MeshLambertMaterial({color:0xd8b04a}),
+  parkGrass:new THREE.MeshLambertMaterial({color:0x4f8a3a}),
+  panel:new THREE.MeshLambertMaterial({color:0x1e3a5f}),
+  ruin:new THREE.MeshLambertMaterial({color:0x2a2622}),
+  trunk:new THREE.MeshLambertMaterial({color:0x5d4a30}),
+  leaf:new THREE.MeshLambertMaterial({color:0x3f6d2e}),
+  glassBlue:new THREE.MeshLambertMaterial({color:0x7ab8d8}),
+};
+function box(w,h,d,mat,x=0,y=0,z=0){ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat); m.position.set(x,y+h/2,z); m.castShadow=true; return m; }
+function cyl(r1,r2,h,mat,x=0,y=0,z=0,seg=8){ const m=new THREE.Mesh(new THREE.CylinderGeometry(r1,r2,h,seg),mat); m.position.set(x,y+h/2,z); m.castShadow=true; return m; }
+
+// ---------- building factories (variant vh in [0,1)) ----------
+function makeRes(level,vh){
+  const g=new THREE.Group();
+  const wall=M.stucco[Math.floor(vh*6)%6], roof=M.roof[Math.floor(vh*13)%4];
+  if(level===1){
+    const v=Math.floor(vh*3);
+    if(v===0){ // gable ranch
+      g.add(box(2.4,1.5,1.9,wall));
+      const r=new THREE.Mesh(new THREE.ConeGeometry(1.85,1.1,4),roof); r.position.y=2.0; r.rotation.y=Math.PI/4; r.castShadow=true; g.add(r);
+      g.add(box(0.9,1.1,0.9,wall,1.4,0,0.4));
+    } else if(v===1){ // bungalow with porch
+      g.add(box(2.1,1.7,2.1,wall));
+      const r=new THREE.Mesh(new THREE.ConeGeometry(1.8,1.3,4),roof); r.position.y=2.3; r.rotation.y=Math.PI/4; r.castShadow=true; g.add(r);
+      g.add(box(1.4,0.1,0.8,M.concrete,0,0,1.4));
+      g.add(box(0.12,1.0,0.12,M.white,-0.55,0.1,1.6)); g.add(box(0.12,1.0,0.12,M.white,0.55,0.1,1.6));
+      g.add(box(1.6,0.18,1.0,roof,0,1.1,1.45));
+    } else { // spanish parapet
+      g.add(box(2.4,1.9,2.2,wall));
+      g.add(box(2.5,0.22,2.3,M.roof[0],0,1.9,0));
+      g.add(box(1.0,0.9,0.9,wall,0.9,1.9,-0.4));
+    }
+    g.rotation.y=Math.floor(vh*97)%4*Math.PI/2;
+  } else if(level===2){
+    const v=Math.floor(vh*2);
+    if(v===0){ g.add(box(3.1,2.6,2.6,wall));
+      const r=new THREE.Mesh(new THREE.ConeGeometry(2.4,1.0,4),roof); r.position.y=3.1; r.rotation.y=Math.PI/4; r.castShadow=true; g.add(r);
+      g.add(box(1.1,1.6,1.1,wall,-1.6,0,0.9));
+    } else { // townhomes row
+      for(let k=-1;k<=1;k++){ g.add(box(1.05,2.4+((k+1)%2)*0.3,2.4,M.stucco[(Math.floor(vh*6)+k+6)%6],k*1.1,0,0));
+        g.add(box(1.1,0.2,2.5,roof,k*1.1,2.4+((k+1)%2)*0.3,0)); }
+    }
+  } else {
+    const v=Math.floor(vh*2);
+    if(v===0){ g.add(box(3.2,7.2,3.0,M.apt)); g.add(box(1.2,0.7,1.2,M.indDark,0.6,7.2,0.4)); }
+    else { g.add(box(2.2,7.8,3.0,M.apt2,-0.6,0,0)); g.add(box(1.6,5.2,2.6,M.apt2,1.0,0,0.2)); g.add(box(1.0,0.6,1.0,M.indDark,-0.6,7.8,0)); }
+    g.add(box(3.4,0.35,3.2,M.concrete,0,-0.05,0));
+  }
+  return g;
+}
+function makeCom(level,vh){
+  const g=new THREE.Group();
+  const aw=M.awning[Math.floor(vh*11)%5];
+  if(level===1){
+    const v=Math.floor(vh*2);
+    if(v===0){ g.add(box(2.9,1.9,2.7,M.shop)); g.add(box(3.0,0.28,0.7,aw,0,1.55,1.55)); }
+    else { // corner cafe with umbrella
+      g.add(box(2.2,1.8,2.2,M.shop,-0.5,0,-0.5));
+      g.add(box(2.3,0.25,0.6,aw,-0.5,1.45,0.85));
+      g.add(cyl(0.05,0.05,1.3,M.white,1.0,0,1.0,5));
+      const um=new THREE.Mesh(new THREE.ConeGeometry(0.9,0.4,7),aw); um.position.set(1.0,1.5,1.0); um.castShadow=true; g.add(um);
+    }
+  } else if(level===2){
+    const v=Math.floor(vh*2);
+    if(v===0){ g.add(box(3.1,3.8,3.0,M.shop)); g.add(box(2.2,0.7,0.25,aw,0,3.85,1.5)); }
+    else { g.add(box(3.2,2.2,3.0,M.shop)); g.add(box(2.4,1.8,2.2,M.office,0.2,2.2,-0.3)); g.add(box(3.3,0.3,0.5,aw,0,2.2,1.45)); }
+  } else {
+    const v=Math.floor(vh*2);
+    if(v===0){ g.add(box(3.2,9.5,3.1,M.office)); g.add(box(3.35,0.3,3.25,M.indDark,0,9.5,0)); g.add(box(0.9,0.9,0.9,M.indDark,-0.7,9.75,-0.6)); }
+    else { // terraced glass
+      g.add(box(3.3,3.4,3.2,M.office2)); g.add(box(2.7,3.2,2.6,M.office2,0.2,3.4,-0.2)); g.add(box(2.0,3.0,2.0,M.office2,-0.3,6.6,0.2));
+      g.add(box(2.1,0.2,2.1,M.glassBlue,-0.3,9.6,0.2));
+    }
+  }
+  return g;
+}
+function makeInd(level,vh){
+  const g=new THREE.Group();
+  const v=Math.floor(vh*2);
+  if(level===1){
+    if(v===0){
+      g.add(box(3.3,2.2,3.0,M.ind));
+      const r=new THREE.Mesh(new THREE.CylinderGeometry(1.66,1.66,3.3,3,1),M.indDark);
+      r.rotation.z=Math.PI/2; r.rotation.y=Math.PI/2; r.position.y=2.2; r.castShadow=true; g.add(r);
+      g.add(cyl(0.28,0.34,2.8,M.indDark,1.2,1.8,-1.0,7));
+    } else { // yard with tanks
+      g.add(box(2.6,2.0,2.4,M.ind,-0.5,0,-0.4));
+      g.add(cyl(0.7,0.7,1.9,M.indDark,1.2,0,0.9,10));
+      g.add(cyl(0.55,0.55,1.5,M.indDark,1.2,0,-0.7,10));
+      g.add(box(3.8,0.12,3.8,M.concrete,0,-0.06,0));
+    }
+  } else {
+    g.add(box(3.5,3.4,3.2,M.ind));
+    g.add(cyl(0.32,0.4,4.6,M.indDark,1.2,2.2,-1.0,7));
+    if(v===0) g.add(cyl(0.32,0.4,4.6,M.indDark,0.3,2.2,-1.0,7));
+    g.add(cyl(0.8,0.8,1.8,M.indDark,-1.3,0,1.2,10));
+  }
+  return g;
+}
+function makeCivic(kind){
+  const g=new THREE.Group();
+  if(kind==='fire'){ g.add(box(3.3,2.5,3.0,M.fireRed)); g.add(box(2.2,1.7,0.2,M.white,0,0,1.5)); g.add(box(0.8,3.6,0.8,M.fireRed,-1.3,0,-1.2)); }
+  else if(kind==='police'){ g.add(box(3.3,2.5,3.0,M.navy)); g.add(box(3.0,0.5,0.3,M.white,0,2.5,1.4)); }
+  else if(kind==='school'){ g.add(box(3.6,2.2,2.2,M.tan)); g.add(box(1.8,2.2,1.6,M.tan,0.9,0,1.6));
+    g.add(cyl(0.05,0.05,3.4,M.white,-1.6,0,1.6,5)); g.add(box(0.8,0.5,0.05,M.fireRed,-1.2,2.9,1.6)); }
+  else if(kind==='park'){ g.add(box(3.9,0.15,3.9,M.parkGrass));
+    for(let k=0;k<3;k++){ const tx=(hash2(k,9)-0.5)*2.6, tz=(hash2(k,17)-0.5)*2.6;
+      g.add(cyl(0.12,0.16,1.0,M.trunk,tx,0.1,tz,5));
+      const cn=new THREE.Mesh(new THREE.SphereGeometry(0.85,6,5),M.leaf); cn.position.set(tx,1.7,tz); cn.castShadow=true; g.add(cn); }
+    g.add(box(0.9,0.4,0.9,M.concrete,0,0.1,0)); }
+  else if(kind==='well'){ g.add(cyl(1.1,1.1,2.8,M.white,0,0,0,10)); g.add(box(1.4,1.0,1.4,M.concrete,1.4,0,0.8)); g.add(cyl(1.2,1.2,0.3,M.navy,0,2.8,0,10)); }
+  else if(kind==='solar'){ g.add(box(3.9,0.1,3.9,M.concrete));
+    for(let r=-1;r<=1;r++){ const p=new THREE.Mesh(new THREE.BoxGeometry(3.4,0.08,1.0),M.panel); p.position.set(0,0.75,r*1.3); p.rotation.x=-0.5; p.castShadow=true; g.add(p); } }
+  else if(kind==='cityhall'){ g.add(box(4.0,2.8,3.4,M.white)); g.add(box(4.4,0.4,3.8,M.concrete,0,-0.1,0));
+    for(let k=-1;k<=1;k++) g.add(box(0.28,2.2,0.28,M.white,k*1.2,0,1.85));
+    g.add(box(4.2,0.4,0.6,M.white,0,2.6,1.85));
+    const dome=new THREE.Mesh(new THREE.SphereGeometry(1.1,10,8,0,Math.PI*2,0,Math.PI/2),M.gold); dome.position.y=2.8; dome.castShadow=true; g.add(dome); }
+  return g;
+}
+function makeRuin(){
+  const g=new THREE.Group();
+  g.add(box(2.6,0.7,2.4,M.ruin)); g.add(box(1.1,1.3,0.4,M.ruin,0.7,0,-0.7)); g.add(box(0.5,1.0,0.5,M.ruin,-0.9,0,0.6));
+  return g;
+}
+function textSprite(text,bg,fg){
+  const cv=document.createElement('canvas'); cv.width=256; cv.height=64;
+  const g=cv.getContext('2d');
+  g.fillStyle=bg; g.fillRect(0,0,256,64);
+  g.strokeStyle='#222'; g.lineWidth=4; g.strokeRect(2,2,252,60);
+  g.fillStyle=fg; g.font='bold 28px Arial'; g.textAlign='center'; g.textBaseline='middle';
+  g.fillText(text,128,34);
+  const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv),transparent:true}));
+  sp.scale.set(5.2,1.3,1); return sp;
+}
+
+// ---------- grid ----------
+let grid=[];
+function initGrid(){
+  grid=[];
+  for(let i=0;i<G;i++){ grid[i]=[]; for(let j=0;j<G;j++) grid[i][j]={kind:null,zone:null,b:null,overlay:null,roadMesh:null,roadType:null,deckY:null,pylons:null}; }
+}
+initGrid();
+function cellTopY(i,j){
+  const c=cellCenter(i,j), s=CELL/2;
+  return Math.max(baseH(c.x-s,c.z-s),baseH(c.x+s,c.z-s),baseH(c.x-s,c.z+s),baseH(c.x+s,c.z+s),baseH(c.x,c.z));
+}
+function roadTopY(i,j){ const c=grid[i][j]; return c.deckY!=null?c.deckY:cellTopY(i,j)+0.26; }
+
+// zone overlays
+const zoneColors={R:0x59c24b,C:0x4b9fe0,I:0xd8b44b};
+const zoneGeo=new THREE.PlaneGeometry(CELL*0.92,CELL*0.92).rotateX(-Math.PI/2);
+const zoneMats={};
+for(const k in zoneColors) zoneMats[k]=new THREE.MeshBasicMaterial({color:zoneColors[k],transparent:true,opacity:0.34,depthWrite:false});
+
+// ---------- roads / avenues / bridges ----------
+function roadStripeTex(double){
+  const cv=document.createElement('canvas'); cv.width=cv.height=64; const g=cv.getContext('2d');
+  g.fillStyle=double?'#35353a':'#3c3c40'; g.fillRect(0,0,64,64);
+  g.strokeStyle='#d8c84a'; g.lineWidth=2.2;
+  if(double){ g.beginPath(); g.moveTo(29,0); g.lineTo(29,64); g.stroke(); g.beginPath(); g.moveTo(35,0); g.lineTo(35,64); g.stroke();
+    g.strokeStyle='#e8e8e8'; g.setLineDash([6,6]); g.beginPath(); g.moveTo(14,0); g.lineTo(14,64); g.stroke(); g.beginPath(); g.moveTo(50,0); g.lineTo(50,64); g.stroke(); }
+  else { g.setLineDash([7,7]); g.beginPath(); g.moveTo(32,0); g.lineTo(32,64); g.stroke(); }
+  return new THREE.CanvasTexture(cv);
+}
+const roadLineMat=new THREE.MeshLambertMaterial({map:roadStripeTex(false)});
+const aveLineMat=new THREE.MeshLambertMaterial({map:roadStripeTex(true)});
+const roadGeo=new THREE.BoxGeometry(CELL,0.26,CELL);
+const roadNet=new Set();
+const privateAccess=new Set();   // lots served by a shared private driveway (small parcel maps)
+const cellCong={}; // "i,j" -> 0..1.5 congestion
+function roadNeighbors(i,j){
+  const out=[];
+  [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz])=>{ if(roadNet.has((i+dx)+','+(j+dz))) out.push([i+dx,j+dz]); });
+  return out;
+}
+function refreshRoadMesh(i,j){
+  const c=grid[i][j]; if(!c.roadMesh) return;
+  const n=roadNet.has(i+','+(j-1)), s=roadNet.has(i+','+(j+1)), e=roadNet.has((i+1)+','+j), w=roadNet.has((i-1)+','+j);
+  const vertical=(n||s)&&!(e||w), horizontal=(e||w)&&!(n||s);
+  const lineMat=c.roadType==='ave'?aveLineMat:roadLineMat;
+  const plainMat=c.roadType==='ave'?M.aveAsphalt:M.asphalt;
+  c.roadMesh.material=(vertical||horizontal)?lineMat:plainMat;
+  c.roadMesh.rotation.y=horizontal?Math.PI/2:0;
+}
+function buildRoad(i,j,type){
+  const cc=cellCenter(i,j);
+  const isBridge=type==='bridge';
+  const y=isBridge?Math.max(MAP.waterY+1.5,cellTopY(i,j)+0.4):cellTopY(i,j);
+  const m=new THREE.Mesh(roadGeo,M.asphalt);
+  m.position.set(cc.x,y+0.13,cc.z); m.receiveShadow=true;
+  cityG.add(m);
+  const cell=grid[i][j];
+  cell.kind='road'; cell.roadMesh=m; cell.roadType=type;
+  if(isBridge){
+    cell.deckY=y+0.26;
+    const py=new THREE.Group();
+    [[-1.4,-1.4],[1.4,-1.4],[-1.4,1.4],[1.4,1.4]].forEach(([ox,oz])=>{
+      const depth=y-baseH(cc.x+ox,cc.z+oz)+0.5;
+      py.add(cyl(0.22,0.26,Math.max(depth,0.6),M.concrete,cc.x+ox,y-depth+0.1,cc.z+oz,6));
+    });
+    // side rails
+    py.add(box(CELL,0.35,0.15,M.concrete,cc.x,y+0.26,cc.z-1.85));
+    py.add(box(CELL,0.35,0.15,M.concrete,cc.x,y+0.26,cc.z+1.85));
+    cityG.add(py); cell.pylons=py;
+  }
+  roadNet.add(i+','+j);
+  clearTreesOnCell(i,j);
+  refreshRoadMesh(i,j);
+  roadNeighbors(i,j).forEach(([a,b])=>refreshRoadMesh(a,b));
+  rebuildLights();
+}
+function hasRoadAccess(i,j){
+  if(privateAccess.has(i+','+j)) return true;
+  for(let dx=-1;dx<=1;dx++) for(let dz=-1;dz<=1;dz++)
+    if(roadNet.has((i+dx)+','+(j+dz))) return true;
+  return false;
+}
+
+// ---------- street lights ----------
+const LIGHT_CAP=460;
+const poleIM=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06,0.08,2.6,5),new THREE.MeshLambertMaterial({color:0x4a4e54}),LIGHT_CAP);
+lightMat=new THREE.MeshLambertMaterial({color:0xfff0c0,emissive:0xffe8a0,emissiveIntensity:0});
+const lampIM=new THREE.InstancedMesh(new THREE.SphereGeometry(0.18,6,5),lightMat,LIGHT_CAP);
+poleIM.count=lampIM.count=0;
+scene.add(poleIM,lampIM);
+function rebuildLights(){
+  let n=0;
+  for(const key of roadNet){
+    const [i,j]=key.split(',').map(Number);
+    if((i+j)%2!==0) continue;
+    if(n>=LIGHT_CAP) break;
+    const cc=cellCenter(i,j), y=roadTopY(i,j);
+    _q.identity();
+    _m.compose(_p.set(cc.x+1.7,y+1.3,cc.z+1.7),_q,_s.set(1,1,1)); poleIM.setMatrixAt(n,_m);
+    _m.compose(_p.set(cc.x+1.7,y+2.65,cc.z+1.7),_q,_s.set(1,1,1)); lampIM.setMatrixAt(n,_m);
+    n++;
+  }
+  poleIM.count=lampIM.count=n;
+  poleIM.instanceMatrix.needsUpdate=lampIM.instanceMatrix.needsUpdate=true;
+}
+
+// ---------- buildings ----------
+const allBuildings=[];
+function addPad(i,j){
+  const cc=cellCenter(i,j), y=cellTopY(i,j);
+  const p=new THREE.Mesh(new THREE.BoxGeometry(CELL*0.98,0.3,CELL*0.98),M.concrete);
+  p.position.set(cc.x,y+0.15,cc.z); p.receiveShadow=true; cityG.add(p);
+  return {pad:p,topY:y+0.3};
+}
+function startBuilding(i,j,kind,level,opts={}){
+  const cell=grid[i][j];
+  const {pad,topY}=addPad(i,j);
+  const cc=cellCenter(i,j);
+  const vh=hash2(i*3+level,j*7+level);
+  let group;
+  if(kind==='res') group=makeRes(level,vh);
+  else if(kind==='com') group=makeCom(level,vh);
+  else if(kind==='ind') group=makeInd(level,vh);
+  else group=makeCivic(kind);
+  group.position.set(cc.x,topY,cc.z);
+  group.scale.y=0.02;
+  cityG.add(group);
+  const bb=new THREE.Box3().setFromObject(group);
+  const fullH=Math.max(1.5,(bb.max.y-bb.min.y)/0.02);
+  const scaffold=new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(3.4,Math.min(fullH,10),3.4)),
+    new THREE.LineBasicMaterial({color:0xe8933a}));
+  scaffold.position.set(cc.x,topY+Math.min(fullH,10)/2,cc.z);
+  cityG.add(scaffold);
+  const needsCEQA=opts.ceqaDays>0;
+  const b={i,j,kind,level,group,pad,topY,scaffold,
+    state:needsCEQA?'ceqa':'build',prog:0,
+    buildDays:opts.buildDays||40,ceqaDays:opts.ceqaDays||0,ceqaLeft:opts.ceqaDays||0,
+    assessed:opts.assessed||0,sign:null,lv:60};
+  if(needsCEQA){
+    b.sign=textSprite(MAP.hasOcean&&nearWaterCell(i,j)?'🏛 COASTAL COMM.':'📋 CEQA REVIEW','#e8d44a','#332a05');
+    b.sign.position.set(cc.x,topY+4.2,cc.z); cityG.add(b.sign);
+  }
+  cell.b=b; cell.kind=cell.kind==='zone'?'zone':'civic';
+  clearTreesOnCell(i,j);
+  allBuildings.push(b);
+  return b;
+}
+function finishBuilding(b){
+  b.state='done'; b.prog=1; b.group.scale.y=1;
+  cityG.remove(b.scaffold); b.scaffold=null;
+  if(b.sign){ cityG.remove(b.sign); b.sign=null; }
+}
+function demolishBuilding(b,toRuin){
+  const cell=grid[b.i][b.j];
+  cityG.remove(b.group); if(b.scaffold) cityG.remove(b.scaffold); if(b.sign) cityG.remove(b.sign);
+  if(toRuin){
+    const cc=cellCenter(b.i,b.j);
+    const r=makeRuin(); r.position.set(cc.x,b.topY,cc.z); cityG.add(r);
+    b.group=r; b.state='ruin'; b.assessed=0;
+    b.ruinLeft=110+Math.floor(Math.random()*70);   // insurance clears the site, then the lot is free again
+  } else {
+    cityG.remove(b.pad);
+    cell.b=null;
+    const idx=allBuildings.indexOf(b); if(idx>=0) allBuildings.splice(idx,1);
+    if(cell.kind==='civic') cell.kind=null;
+  }
+}
+
+// ---------- fire FX (v2: flame pair + embers) ----------
+const flameTex=(()=>{ const cv=document.createElement('canvas'); cv.width=cv.height=64; const g=cv.getContext('2d');
+  const gr=g.createRadialGradient(32,40,3,32,40,28);
+  gr.addColorStop(0,'rgba(255,240,160,1)'); gr.addColorStop(0.4,'rgba(255,140,40,0.9)'); gr.addColorStop(1,'rgba(200,40,10,0)');
+  g.fillStyle=gr; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(cv); })();
+const smokeTex=(()=>{ const cv=document.createElement('canvas'); cv.width=cv.height=64; const g=cv.getContext('2d');
+  const gr=g.createRadialGradient(32,32,4,32,32,30);
+  gr.addColorStop(0,'rgba(70,66,62,0.85)'); gr.addColorStop(1,'rgba(70,66,62,0)');
+  g.fillStyle=gr; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(cv); })();
+const burning=new Map();
+function igniteCell(i,j,treeIdx){
+  const key=i+','+j+(treeIdx!=null?':'+treeIdx:'');
+  if(burning.has(key)) return;
+  let x,z,y;
+  if(treeIdx!=null){ const t=trees[treeIdx]; x=t.x; z=t.z; y=t.h+3; }
+  else { const cc=cellCenter(i,j); x=cc.x; z=cc.z; y=cellTopY(i,j)+2; }
+  const mk=(sx,sy,ox)=>{ const f=new THREE.Sprite(new THREE.SpriteMaterial({map:flameTex,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending}));
+    f.position.set(x+ox,y,z); f.scale.set(sx,sy,1); fxG.add(f); return f; };
+  const flame=mk(6,7,0), flame2=mk(3.5,4.5,1.2);
+  const smoke=new THREE.Sprite(new THREE.SpriteMaterial({map:smokeTex,transparent:true,depthWrite:false,opacity:0.8}));
+  smoke.position.set(x,y+5,z); smoke.scale.set(8,8,1); fxG.add(smoke);
+  burning.set(key,{i,j,flame,flame2,smoke,daysLeft:3,isTree:treeIdx!=null,treeIdx,baseY:y});
+}
+function extinguish(key){
+  const f=burning.get(key); if(!f) return;
+  fxG.remove(f.flame); fxG.remove(f.flame2); fxG.remove(f.smoke);
+  burning.delete(key);
+}
+function burnOut(key){
+  const f=burning.get(key); if(!f) return;
+  if(f.isTree){ removeTree(f.treeIdx); }
+  else { const cell=grid[f.i][f.j]; if(cell.b&&cell.b.state!=='ruin') demolishBuilding(cell.b,true); }
+  const cc=f.isTree?{x:trees[f.treeIdx].x,z:trees[f.treeIdx].z}:cellCenter(f.i,f.j);
+  const mark=new THREE.Mesh(new THREE.CircleGeometry(2.6,10).rotateX(-Math.PI/2),
+    new THREE.MeshBasicMaterial({color:0x191512,transparent:true,opacity:0.75,depthWrite:false}));
+  mark.position.set(cc.x,baseH(cc.x,cc.z)+0.12,cc.z); cityG.add(mark);
+  extinguish(key);
+}
+function animateFires(t){
+  burning.forEach(f=>{
+    const fl=0.85+Math.sin(t*13+f.i*3.1)*0.18+Math.random()*0.1;
+    f.flame.scale.set(6*fl,7*fl,1);
+    f.flame2.scale.set(3.5*(2-fl),4.5*(2-fl)*0.8,1);
+    f.smoke.position.y=f.baseY+5+Math.sin(t*0.8+f.j)*1.4;
+    f.smoke.material.rotation+=0.004;
+  });
+}
+
+// ---------- cars & pedestrians ----------
+const carGeo=new THREE.BoxGeometry(1.15,0.6,2.2);
+const cabGeo=new THREE.BoxGeometry(0.95,0.45,1.05);
+const carColors=[0xd8d8d8,0xc0392b,0x2c3e50,0x2980b9,0xe8e4d8,0x555a60,0xa8622d];
+const cars=[];
+function spawnCar(){
+  const rk=[...roadNet]; if(rk.length<4) return;
+  const start=rk[Math.floor(Math.random()*rk.length)].split(',').map(Number);
+  const col=carColors[Math.floor(Math.random()*carColors.length)];
+  const g=new THREE.Group();
+  const body=new THREE.Mesh(carGeo,new THREE.MeshLambertMaterial({color:col})); body.position.y=0.3; body.castShadow=true; g.add(body);
+  const cab=new THREE.Mesh(cabGeo,new THREE.MeshLambertMaterial({color:0x223038})); cab.position.set(0,0.68,-0.05); g.add(cab);
+  carG.add(g);
+  cars.push({g,ci:start[0],cj:start[1],ni:start[0],nj:start[1],t:1,speed:0.9+Math.random()*0.6,lane:Math.random()<0.5?-0.85:0.85});
+}
+function despawnCar(){ const c=cars.pop(); if(c) carG.remove(c.g); }
+function carTick(dt){
+  const target=clamp(Math.floor(roadNet.size/5)+(S.pop>0?2:0),0,48);
+  if(cars.length<target && Math.random()<0.3) spawnCar();
+  if(cars.length>target) despawnCar();
+  cars.forEach(c=>{
+    const cong=cellCong[c.ci+','+c.cj]||0;
+    c.t+=dt*c.speed/(1+cong*1.4);
+    if(c.t>=1){
+      c.ci=c.ni; c.cj=c.nj; c.t=0;
+      const nb=roadNeighbors(c.ci,c.cj).filter(([a,b])=>!(a===c.pi&&b===c.pj));
+      const pool=nb.length?nb:roadNeighbors(c.ci,c.cj);
+      if(!pool.length){ c.t=1; return; }
+      const nxt=pool[Math.floor(Math.random()*pool.length)];
+      c.pi=c.ci; c.pj=c.cj; c.ni=nxt[0]; c.nj=nxt[1];
+    }
+    const a=cellCenter(c.ci,c.cj), b2=cellCenter(c.ni,c.nj);
+    const x=lerp(a.x,b2.x,c.t), z=lerp(a.z,b2.z,c.t);
+    const dirx=b2.x-a.x, dirz=b2.z-a.z;
+    const len=Math.sqrt(dirx*dirx+dirz*dirz)||1;
+    const px=-dirz/len*c.lane*0.9, pz=dirx/len*c.lane*0.9;
+    const y=Math.max(roadTopY(c.ci,c.cj),roadTopY(c.ni,c.nj));
+    c.g.position.set(x+px,y+0.02,z+pz);
+    if(len>0.01) c.g.rotation.y=Math.atan2(dirx,dirz);
+  });
+}
+// pedestrians
+const pedGeo=new THREE.BoxGeometry(0.32,0.85,0.32);
+const pedColors=[0xd0784a,0x4a78d0,0x58a860,0xc8c8c8,0xb85898,0xd8b04a];
+const peds=[];
+function spawnPed(){
+  const rk=[...roadNet]; if(!rk.length) return;
+  const start=rk[Math.floor(Math.random()*rk.length)].split(',').map(Number);
+  const m=new THREE.Mesh(pedGeo,new THREE.MeshLambertMaterial({color:pedColors[Math.floor(Math.random()*6)]}));
+  m.castShadow=true; carG.add(m);
+  peds.push({m,ci:start[0],cj:start[1],ni:start[0],nj:start[1],t:1,speed:0.25+Math.random()*0.15,lane:Math.random()<0.5?-1.65:1.65});
+}
+function pedTick(dt){
+  const target=clamp(Math.floor(S.pop/45),0,30);
+  if(peds.length<target && Math.random()<0.25) spawnPed();
+  if(peds.length>target){ const p=peds.pop(); if(p) carG.remove(p.m); }
+  peds.forEach(c=>{
+    c.t+=dt*c.speed;
+    if(c.t>=1){
+      c.ci=c.ni; c.cj=c.nj; c.t=0;
+      const nb=roadNeighbors(c.ci,c.cj).filter(([a,b])=>!(a===c.pi&&b===c.pj));
+      const pool=nb.length?nb:roadNeighbors(c.ci,c.cj);
+      if(!pool.length){ c.t=1; return; }
+      const nxt=pool[Math.floor(Math.random()*pool.length)];
+      c.pi=c.ci; c.pj=c.cj; c.ni=nxt[0]; c.nj=nxt[1];
+    }
+    const a=cellCenter(c.ci,c.cj), b2=cellCenter(c.ni,c.nj);
+    const x=lerp(a.x,b2.x,c.t), z=lerp(a.z,b2.z,c.t);
+    const dirx=b2.x-a.x, dirz=b2.z-a.z;
+    const len=Math.sqrt(dirx*dirx+dirz*dirz)||1;
+    const px=-dirz/len*c.lane, pz=dirx/len*c.lane;
+    c.m.position.set(x+px,Math.max(roadTopY(c.ci,c.cj),roadTopY(c.ni,c.nj))+0.42,z+pz);
+  });
+}
+
+// ---------- hover ----------
+const hoverMesh=new THREE.Mesh(new THREE.PlaneGeometry(CELL*0.96,CELL*0.96).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({color:0x6dd45e,transparent:true,opacity:0.45,depthWrite:false}));
+hoverMesh.visible=false; scene.add(hoverMesh);
+function showHover(i,j,ok){
+  const cc=cellCenter(i,j);
+  hoverMesh.position.set(cc.x,cellTopY(i,j)+0.2,cc.z);
+  hoverMesh.material.color.setHex(ok?0x6dd45e:0xe05b4f);
+  hoverMesh.visible=true;
+}
+
+// ---------- city reset (new game / load) ----------
+function clearCity(){
+  scene.remove(cityG); cityG=new THREE.Group(); scene.add(cityG);
+  scene.remove(fxG); fxG=new THREE.Group(); scene.add(fxG);
+  scene.remove(carG); carG=new THREE.Group(); scene.add(carG);
+  allBuildings.length=0; cars.length=0; peds.length=0;
+  parcels.length=0; parcelSeq=0;
+  burning.clear(); roadNet.clear(); privateAccess.clear();
+  for(const k in cellCong) delete cellCong[k];
+  initGrid(); rebuildLights();
+}
+
+/* ============================================================
+   SUBDIVISIONS — Subdivision Map Act (Gov. Code §66410 et seq.)
+   Raw land → Tentative Map → Planning Commission → Final Map
+   → streets dedicated, lots platted, houses built.
+   ============================================================ */
+
+const ACRES_PER_CELL=0.25;
+const parcels=[];
+let parcelSeq=0;
+
+function parcelKey(i,j){ return i+','+j; }
+function parcelAt(i,j){
+  for(const p of parcels){
+    if(p.state==='void') continue;
+    if(i>=p.i0&&i<=p.i1&&j>=p.j0&&j<=p.j1) return p;
+  }
+  return null;
+}
+function rectCells(i0,j0,i1,j1){
+  const out=[];
+  for(let i=i0;i<=i1;i++) for(let j=j0;j<=j1;j++) out.push([i,j]);
+  return out;
+}
+// A subdivision must front an existing public street (frontage requirement).
+function rectHasFrontage(i0,j0,i1,j1){
+  for(let i=i0;i<=i1;i++){
+    if(roadNet.has(parcelKey(i,j0-1))||roadNet.has(parcelKey(i,j1+1))) return true;
+  }
+  for(let j=j0;j<=j1;j++){
+    if(roadNet.has(parcelKey(i0-1,j))||roadNet.has(parcelKey(i1+1,j))) return true;
+  }
+  return false;
+}
+function rectValidity(i0,j0,i1,j1){
+  const cells=rectCells(i0,j0,i1,j1);
+  if(cells.length<2) return {ok:false,why:'Too small — subdivide at least 2 lots'};
+  if(cells.length>420) return {ok:false,why:'Too large — 420 lots maximum per map'};
+  for(const [i,j] of cells){
+    if(i<0||j<0||i>=G||j>=G) return {ok:false,why:'Outside the planning area'};
+    if(!cellBuildable(i,j)) return {ok:false,why:'Includes unbuildable land (too steep, wet, or water)'};
+    const c=grid[i][j];
+    if(c.kind||c.b) return {ok:false,why:'Overlaps existing streets, lots or buildings'};
+    if(parcelAt(i,j)) return {ok:false,why:'Overlaps another recorded or pending map'};
+  }
+  if(!rectHasFrontage(i0,j0,i1,j1)) return {ok:false,why:'No frontage — a subdivision must touch an existing street'};
+  return {ok:true};
+}
+
+// ---------- street layout ----------
+// Find where the tract meets the existing street network.
+function findEntry(p){
+  const cands=[];
+  for(let i=p.i0;i<=p.i1;i++){
+    if(roadNet.has(parcelKey(i,p.j0-1))) cands.push({i,j:p.j0,axis:'v'});
+    if(roadNet.has(parcelKey(i,p.j1+1))) cands.push({i,j:p.j1,axis:'v'});
+  }
+  for(let j=p.j0;j<=p.j1;j++){
+    if(roadNet.has(parcelKey(p.i0-1,j))) cands.push({i:p.i0,j,axis:'h'});
+    if(roadNet.has(parcelKey(p.i1+1,j))) cands.push({i:p.i1,j,axis:'h'});
+  }
+  if(!cands.length) return null;
+  return cands[Math.floor(cands.length/2)];
+}
+// Small parcel maps (4-6 lots) are served by a shared private driveway — a flag lot,
+// no dedicated street. Anything bigger gets a real tract layout: a spine road in from
+// the entry, then side streets added greedily until every lot has frontage.
+const DRIVEWAY_MAX=6;
+function layoutStreets(p,cells,spineAxis,e){
+  const st=new Set();
+  const inSt=(i,j)=>st.has(parcelKey(i,j));
+  const served=(i,j)=>{
+    if(hasRoadAccess(i,j)) return true;
+    for(let dx=-1;dx<=1;dx++) for(let dz=-1;dz<=1;dz++) if(inSt(i+dx,j+dz)) return true;
+    return false;
+  };
+  const unserved=()=>cells.filter(([i,j])=>!inSt(i,j)&&!served(i,j));
+  // spine always passes through the entry cell, so it always reaches the street
+  if(spineAxis==='h') for(let i=p.i0;i<=p.i1;i++) st.add(parcelKey(i,e.j));
+  else for(let j=p.j0;j<=p.j1;j++) st.add(parcelKey(e.i,j));
+  let guard=0;
+  while(unserved().length&&guard++<60){
+    const open=unserved();
+    let best=null,bestN=0;
+    const consider=line=>{
+      const key=new Set(line.map(([i,j])=>parcelKey(i,j)));
+      let n=0;
+      open.forEach(([i,j])=>{
+        if(key.has(parcelKey(i,j))) return;
+        for(let dx=-1;dx<=1;dx++) for(let dz=-1;dz<=1;dz++)
+          if(key.has(parcelKey(i+dx,j+dz))){ n++; return; }
+      });
+      if(n-line.length*0.34>bestN-0.0001&&n>0){ bestN=n; best=line; }
+    };
+    // branches run perpendicular to the spine, so they always cross it
+    if(spineAxis==='h'){
+      for(let i=p.i0;i<=p.i1;i++){ const l=[]; for(let j=p.j0;j<=p.j1;j++) if(!inSt(i,j)) l.push([i,j]); if(l.length) consider(l); }
+    } else {
+      for(let j=p.j0;j<=p.j1;j++){ const l=[]; for(let i=p.i0;i<=p.i1;i++) if(!inSt(i,j)) l.push([i,j]); if(l.length) consider(l); }
+    }
+    if(!best) break;
+    best.forEach(([i,j])=>st.add(parcelKey(i,j)));
+  }
+  return st;
+}
+// Trim right-of-way the tract does not actually need — this is what turns bare
+// grids into cul-de-sacs and stub streets.
+function pruneStreets(p,cells,st,e){
+  const entry=parcelKey(e.i,e.j);
+  const inSt=k=>st.has(k);
+  const servedBy=(i,j)=>{
+    if(hasRoadAccess(i,j)) return true;
+    for(let dx=-1;dx<=1;dx++) for(let dz=-1;dz<=1;dz++) if(inSt(parcelKey(i+dx,j+dz))) return true;
+    return false;
+  };
+  const connected=()=>{
+    if(!st.size) return true;
+    const seen=new Set([entry]), q=[[e.i,e.j]];
+    while(q.length){
+      const [i,j]=q.pop();
+      [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz])=>{
+        const k=parcelKey(i+dx,j+dz);
+        if(st.has(k)&&!seen.has(k)){ seen.add(k); q.push([i+dx,j+dz]); }
+      });
+    }
+    return seen.size===st.size;
+  };
+  const order=[...st].filter(k=>k!==entry).sort(()=>0);
+  for(const k of order){
+    st.delete(k);
+    const ok=cells.every(([i,j])=>st.has(parcelKey(i,j))||servedBy(i,j))&&connected();
+    if(!ok) st.add(k);
+  }
+  return st;
+}
+// Small parcel maps (up to 6 lots) are served by a shared private driveway — a flag
+// lot, no dedicated street. Anything bigger gets a real tract layout.
+function planStreets(p){
+  const cells=rectCells(p.i0,p.j0,p.i1,p.j1);
+  if(cells.every(([i,j])=>hasRoadAccess(i,j))) return [];
+  if(cells.length<=DRIVEWAY_MAX) return [];
+  const e=findEntry(p);
+  if(!e) return [];
+  const A=layoutStreets(p,cells,'v',e);
+  const B=layoutStreets(p,cells,'h',e);
+  const st=pruneStreets(p,cells,A.size<=B.size?A:B,e);
+  return [...st].map(k=>k.split(',').map(Number));
+}
+function parcelPlan(i0,j0,i1,j1,zone){
+  const p={i0,j0,i1,j1,zone};
+  const streets=planStreets(p);
+  const sset=new Set(streets.map(([i,j])=>parcelKey(i,j)));
+  const lots=rectCells(i0,j0,i1,j1).filter(([i,j])=>!sset.has(parcelKey(i,j)));
+  return {streets,lots,sset};
+}
+
+// ---------- visuals ----------
+function makeCellQuads(cells,color,opacity,yOff){
+  if(!cells.length) return null;
+  const pos=[],idx=[]; let n=0;
+  cells.forEach(([i,j])=>{
+    const c=cellCenter(i,j), y=cellTopY(i,j)+yOff, s=CELL/2-0.08;
+    pos.push(c.x-s,y,c.z-s, c.x+s,y,c.z-s, c.x+s,y,c.z+s, c.x-s,y,c.z+s);
+    idx.push(n,n+1,n+2, n,n+2,n+3); n+=4;
+  });
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setIndex(idx);
+  return new THREE.Mesh(g,new THREE.MeshBasicMaterial({color,transparent:true,opacity,depthWrite:false,side:THREE.DoubleSide}));
+}
+function makeSurveyVisual(p){
+  const g=new THREE.Group();
+  const pts=[];
+  const corners=[[p.i0,p.j0],[p.i1+1,p.j0],[p.i1+1,p.j1+1],[p.i0,p.j1+1]];
+  const xy=corners.map(([i,j])=>({x:(i-G/2)*CELL,z:(j-G/2)*CELL}));
+  for(let k=0;k<4;k++){
+    const a=xy[k], b=xy[(k+1)%4];
+    const steps=Math.max(2,Math.round(Math.hypot(b.x-a.x,b.z-a.z)/CELL));
+    for(let s=0;s<steps;s++){
+      const t0=s/steps, t1=(s+1)/steps;
+      const x0=lerp(a.x,b.x,t0), z0=lerp(a.z,b.z,t0);
+      const x1=lerp(a.x,b.x,t1), z1=lerp(a.z,b.z,t1);
+      pts.push(new THREE.Vector3(x0,baseH(x0,z0)+0.5,z0),new THREE.Vector3(x1,baseH(x1,z1)+0.5,z1));
+    }
+  }
+  const line=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color:0xff9a3c}));
+  g.add(line);
+  // the proposed layout, staked out on the ground
+  const lotQ=makeCellQuads(p.lots||[],0xff9a3c,0.20,0.20); if(lotQ) g.add(lotQ);
+  const stQ=makeCellQuads(p.streets||[],0x23252c,0.42,0.22); if(stQ) g.add(stQ);
+  // survey stakes at the corners
+  xy.forEach(c=>{
+    g.add(cyl(0.07,0.07,1.5,M.white,c.x,baseH(c.x,c.z),c.z,4));
+    const top=new THREE.Mesh(new THREE.BoxGeometry(0.3,0.3,0.02),new THREE.MeshBasicMaterial({color:0xff5a1c}));
+    top.position.set(c.x,baseH(c.x,c.z)+1.6,c.z); g.add(top);
+  });
+  const cx=(( (p.i0+p.i1+1)/2)-G/2)*CELL, cz=(((p.j0+p.j1+1)/2)-G/2)*CELL;
+  const sign=textSprite(p.mapType==='tract'?'📐 TENTATIVE TRACT MAP':'📐 PARCEL MAP','#ff9a3c','#241000');
+  sign.position.set(cx,baseH(cx,cz)+5.0,cz);
+  sign.scale.set(7,1.75,1);
+  g.add(sign);
+  p.signSprite=sign;
+  cityG.add(g);
+  return g;
+}
+function makeLotLines(p){
+  const pts=[];
+  p.lots.forEach(([i,j])=>{
+    const c=cellCenter(i,j), h=cellTopY(i,j)+0.16, s=CELL/2-0.12;
+    const cs=[[-s,-s],[s,-s],[s,s],[-s,s]];
+    for(let k=0;k<4;k++){
+      const a=cs[k], b=cs[(k+1)%4];
+      pts.push(new THREE.Vector3(c.x+a[0],h,c.z+a[1]),new THREE.Vector3(c.x+b[0],h,c.z+b[1]));
+    }
+  });
+  if(!pts.length) return null;
+  const ll=new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({color:0xf0ead8,transparent:true,opacity:0.34}));
+  cityG.add(ll);
+  return ll;
+}
+function clearParcelVisual(p){
+  if(p.survey){ cityG.remove(p.survey); p.survey=null; }
+  if(p.lotLines){ cityG.remove(p.lotLines); p.lotLines=null; }
+}
+
+// ---------- lifecycle ----------
+function createParcel(i0,j0,i1,j1,zone,plan,meta){
+  const p={id:++parcelSeq,i0,j0,i1,j1,zone,
+    streets:plan.streets,lots:plan.lots,
+    state:'pending',daysLeft:meta.reviewDays,totalDays:meta.reviewDays,
+    mapType:meta.mapType,ceqa:meta.ceqa,fees:meta.fees,staffCost:meta.staffCost,
+    tract:meta.tract,appealed:false,survey:null,lotLines:null};
+  parcels.push(p);
+  p.survey=makeSurveyVisual(p);
+  return p;
+}
+function recordFinalMap(p){
+  p.state='recorded';
+  clearParcelVisual(p);
+  p.streets.forEach(([i,j])=>{ if(!grid[i][j].kind) buildRoad(i,j,'road'); });
+  if(!p.streets.length) p.lots.forEach(([i,j])=>privateAccess.add(parcelKey(i,j)));
+  p.lots.forEach(([i,j])=>{ if(!grid[i][j].kind) setZone(i,j,p.zone); });
+  p.lotLines=makeLotLines(p);
+}
+function withdrawParcel(p){
+  clearParcelVisual(p);
+  p.state='void';
+}
+/* ============================================================
+   Simulation v2: CA economy & laws, land value, traffic, crime,
+   approval & elections, bonds, hazards, save/load, UI, main loop
+   ============================================================ */
+
+const S={
+  money:2000000, day:0, dom:1, month:2, year:2026, startYear:2026,
+  pop:0, housingCap:0, comJobs:0, indJobs:0,
+  dR:0.4, dC:0, dI:0,
+  incorporated:false, cityName:'—',
+  waterUse:0, waterCap:0, powerUse:0, powerCap:0, waterOK:true, powerOK:true,
+  drought:false, reservoir:0.85, floodTimer:0, heatwave:false,
+  policies:{adu:false,sb9:false,retrofit:false,defense:false,conserve:false,sb35:false},
+  rhna:null, speed:1, tool:'select', started:false, mapId:null,
+  budget:{}, bonds:[], tut:false, tutPending:false,
+  approval:60, crime:0, disasterHeat:0, avgCong:0, termCount:0,
+  subZone:'R', monthImpactFees:0, impactFeesTotal:0, tractsRecorded:0,
+};
+const RES_CAP=[0,4,12,40], RES_VAL=[0,750000,1900000,5200000], RES_UNITS=[0,1,3,12];
+const COM_JOBS=[0,6,16,45], COM_VAL=[0,900000,2200000,5500000];
+const IND_JOBS=[0,10,26,26], IND_VAL=[0,1100000,2600000,2600000];
+const CIVIC_OPEX={fire:1300,police:1200,school:1900,park:250,well:320,solar:260,cityhall:2200};
+// Small cities contract with the county for public safety (the "Lakewood Plan")
+// and only stand up their own departments as they grow.
+const STAFFED={fire:1,police:1,school:1,cityhall:1};
+function staffingMul(){ return 0.38+0.62*clamp(S.pop/1500,0,1); }
+const INC_POP=350;
+const notes=[]; let unread=0;
+
+// ---------- advisor / toasts ----------
+function toast(msg,bad){
+  const t=document.createElement('div'); t.className='toast'+(bad?' bad':''); t.innerHTML=msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(()=>{ t.style.transition='opacity .5s'; t.style.opacity=0; setTimeout(()=>t.remove(),500); },6000);
+}
+function advise(msg,cls){
+  notes.unshift({msg,cls:cls||'',when:MONTHS[S.month]+' '+S.year}); unread++;
+  if(notes.length>50) notes.pop();
+  updateBadge(); toast(msg,cls==='bad');
+}
+function updateBadge(){
+  const b=document.getElementById('noteBadge');
+  b.style.display=unread>0?'block':'none'; b.textContent=unread;
+}
+function updateMapBadge(){
+  const n=parcels.filter(p=>p.state==='pending').length;
+  const b=document.getElementById('mapBadge');
+  b.style.display=n>0?'block':'none'; b.textContent=n;
+}
+
+// ---------- toolbar ----------
+const TOOLS=[
+  {id:'select',ico:'🖐',name:'Select',cost:0},
+  {id:'road',ico:'🛣️',name:'Road',cost:200},
+  {id:'ave',ico:'🛤️',name:'Avenue',cost:500},
+  {id:'subdivide',ico:'📐',name:'Subdivide',cost:0},
+  {id:'zoneR',ico:'🏠',name:'Infill R',cost:50},
+  {id:'zoneC',ico:'🏬',name:'Infill C',cost:50},
+  {id:'zoneI',ico:'🏭',name:'Infill I',cost:50},
+  {id:'well',ico:'💧',name:'Well',cost:25000},
+  {id:'solar',ico:'☀️',name:'Solar',cost:40000},
+  {id:'fire',ico:'🚒',name:'Fire',cost:65000},
+  {id:'police',ico:'🚓',name:'Police',cost:60000},
+  {id:'school',ico:'🏫',name:'School',cost:90000},
+  {id:'park',ico:'🌳',name:'Park',cost:15000},
+  {id:'cityhall',ico:'🏛️',name:'City Hall',cost:150000,locked:()=>!S.incorporated},
+  {id:'dozer',ico:'🚜',name:'Dozer',cost:10},
+];
+const CIVIC_IDS=['well','solar','fire','police','school','park','cityhall'];
+const BRIDGE_COST={road:1200,ave:1800};
+const tbar=document.getElementById('toolbar');
+TOOLS.forEach(t=>{
+  const b=document.createElement('button');
+  b.className='tool'; b.id='tool_'+t.id;
+  b.innerHTML=`<span class="ico">${t.ico}</span>${t.name}<span class="cost">${t.cost?fmt$(t.cost):''}</span>`;
+  b.onclick=()=>{ if(t.locked&&t.locked()){ toast('🏛 City Hall unlocks after incorporation.'); return; } setTool(t.id); };
+  tbar.appendChild(b);
+});
+function setTool(id){
+  S.tool=id;
+  document.querySelectorAll('.tool').forEach(el=>el.classList.remove('active'));
+  const el=document.getElementById('tool_'+id); if(el) el.classList.add('active');
+  canvas.style.cursor=id==='select'?'grab':'crosshair';
+  const sh=document.getElementById('subHint');
+  if(id==='subdivide'){ renderSubHint(); sh.style.display='block'; }
+  else sh.style.display='none';
+  if(id!=='subdivide') hideRectPreview();
+}
+function renderSubHint(){
+  const sh=document.getElementById('subHint');
+  sh.innerHTML=`<b>Subdivide:</b> drag out raw land that touches an existing street. Streets and lots are laid out for you.
+    <div class="zonePick">
+      <button data-sz="R" class="${S.subZone==='R'?'on':''}">🏠 Residential</button>
+      <button data-sz="C" class="${S.subZone==='C'?'on':''}">🏬 Commercial</button>
+      <button data-sz="I" class="${S.subZone==='I'?'on':''}">🏭 Industrial</button>
+    </div>`;
+  sh.querySelectorAll('button[data-sz]').forEach(b=>b.onclick=()=>{ S.subZone=b.dataset.sz; renderSubHint(); });
+}
+setTool('select');
+
+// ---------- zoning / tools ----------
+function setZone(i,j,z){
+  const cell=grid[i][j];
+  cell.kind='zone'; cell.zone=z;
+  const cc=cellCenter(i,j);
+  const m=new THREE.Mesh(zoneGeo,zoneMats[z]);
+  m.position.set(cc.x,cellTopY(i,j)+0.18,cc.z);
+  cityG.add(m); cell.overlay=m;
+}
+function clearCell(i,j){
+  const cell=grid[i][j];
+  if(cell.b) demolishBuilding(cell.b,false);
+  if(cell.overlay){ cityG.remove(cell.overlay); cell.overlay=null; }
+  if(cell.roadMesh){ cityG.remove(cell.roadMesh); if(cell.pylons) cityG.remove(cell.pylons);
+    cell.roadMesh=null; cell.pylons=null; cell.roadType=null; cell.deckY=null;
+    roadNet.delete(i+','+j);
+    [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz])=>{ const a=i+dx,b=j+dz; if(a>=0&&b>=0&&a<G&&b<G) refreshRoadMesh(a,b); });
+    rebuildLights(); }
+  cell.kind=null; cell.zone=null;
+}
+function ceqaDaysFor(kind,level,i,j){
+  let d=0;
+  if(level>=3) d+=120;
+  if(nearWaterCell(i,j)) d+=MAP.hasOcean?150:90;
+  if(kind==='ind') d+=60;
+  if(S.policies.sb35) d=Math.round(d*0.25);
+  return d;
+}
+function spend(n){ S.money-=n; }
+function applyTool(i,j,isClick){
+  const cell=grid[i][j], t=S.tool;
+  if(t==='select') return;
+  if(t==='dozer'){
+    const pp=parcelAt(i,j);
+    if(pp&&pp.state==='pending'){ withdrawParcel(pp); advise(`📐 ${pp.tract} withdrawn from Planning. Application fees are not refundable.`,'warn'); return; }
+    if(cell.kind||cell.b){ clearCell(i,j); spend(10); } return;
+  }
+  if(t==='subdivide') return;
+  const toolDef=TOOLS.find(x=>x.id===t);
+  if(t==='road'||t==='ave'){
+    if(cell.kind) return;
+    if(cellBuildable(i,j)){
+      if(S.money<toolDef.cost){ if(isClick) toast('💸 Not enough funds.',true); return; }
+      buildRoad(i,j,t); spend(toolDef.cost); return;
+    }
+    if(cellBridgeable(i,j)){
+      const bc=BRIDGE_COST[t];
+      if(S.money<bc){ if(isClick) toast('💸 Bridge needs '+fmt$(bc)+'.',true); return; }
+      buildRoad(i,j,'bridge'); spend(bc);
+      if(isClick) toast('🌉 Bridge built.');
+      return;
+    }
+    return;
+  }
+  if(S.money<toolDef.cost){ if(isClick) toast('💸 Not enough funds.',true); return; }
+  if(!cellBuildable(i,j)||cell.kind) return;
+  if(t==='zoneR'){ setZone(i,j,'R'); spend(50); return; }
+  if(t==='zoneC'){ setZone(i,j,'C'); spend(50); return; }
+  if(t==='zoneI'){ setZone(i,j,'I'); spend(50); return; }
+  if(CIVIC_IDS.includes(t)){
+    if(!isClick) return;
+    if(t!=='well'&&t!=='solar'&&!hasRoadAccess(i,j)){ toast('🛣️ Needs road access.',true); return; }
+    spend(toolDef.cost);
+    const ceqa=(t==='cityhall'&&!S.policies.sb35)?45:0;
+    startBuilding(i,j,t,1,{buildDays:22,ceqaDays:ceqa,assessed:0});
+    if(t==='well') advise('💧 New groundwater well drilled. Output falls in droughts — redundancy is resilience.');
+    return;
+  }
+}
+
+
+/* ---------- Subdivision Map Act: fees, CEQA tier, review clock ---------- */
+const IMPACT_FEES={
+  R:[['Quimby Act park fee (Gov. §66477)',6000],['School facilities fee (Ed. §17620)',5000],['Traffic impact fee (DIF)',4000]],
+  C:[['School facilities fee (commercial)',1200],['Traffic impact fee (DIF)',9000]],
+  I:[['School facilities fee (industrial)',900],['Traffic impact fee (DIF)',6000]],
+};
+const CEQA_LABEL={
+  exempt:['Categorical Exemption (Class 15 — minor land division)','ex'],
+  mnd:['Mitigated Negative Declaration','mnd'],
+  eir:['Environmental Impact Report','eir'],
+};
+function mapActInfo(i0,j0,i1,j1,zone){
+  const plan=parcelPlan(i0,j0,i1,j1,zone);
+  const lots=plan.lots.length, cells=(i1-i0+1)*(j1-j0+1);
+  const acres=cells*ACRES_PER_CELL;
+  const mapType=lots>=5?'tract':'parcel';
+  const sensitive=rectCells(i0,j0,i1,j1).some(([i,j])=>nearWaterCell(i,j));
+  let ceqa = (lots<=4&&!sensitive) ? 'exempt' : (lots>40||sensitive) ? 'eir' : 'mnd';
+  if(S.policies.sb35&&zone==='R') ceqa='exempt';
+  let reviewDays = mapType==='parcel'?35:80;
+  if(ceqa==='mnd') reviewDays+=55;
+  if(ceqa==='eir') reviewDays+=160;
+  if(S.policies.sb35) reviewDays=Math.round(reviewDays*0.35);
+  const schedule=IMPACT_FEES[zone];
+  const feeTotal=schedule.reduce((a,[,v])=>a+v,0)*lots;
+  const staffCost=8000+600*lots+(ceqa==='eir'?45000:ceqa==='mnd'?12000:0);
+  return {plan,lots,cells,acres,mapType,ceqa,sensitive,reviewDays,schedule,feeTotal,staffCost,
+    streetCount:plan.streets.length,maint:plan.streets.length*14};
+}
+
+/* ---------- drag-rectangle preview ---------- */
+var rectSystemReady=false;   // var: hoisted, so setTool() can run before this block
+const rectPrev=new THREE.Mesh(new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2),
+  new THREE.MeshBasicMaterial({color:0xff9a3c,transparent:true,opacity:0.24,depthWrite:false}));
+rectPrev.visible=false; scene.add(rectPrev);
+const rectEdge=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(1,1).rotateX(-Math.PI/2)),
+  new THREE.LineBasicMaterial({color:0xff9a3c}));
+rectEdge.visible=false; scene.add(rectEdge);
+const rectLabel=document.getElementById('rectLabel');
+let rectAnchor=null, pendingRect=null;
+rectSystemReady=true;
+function rectBounds(a,b){
+  return {i0:Math.min(a.i,b.i),j0:Math.min(a.j,b.j),i1:Math.max(a.i,b.i),j1:Math.max(a.j,b.j)};
+}
+function hideRectPreview(){
+  if(!rectSystemReady) return;
+  rectPrev.visible=rectEdge.visible=false;
+  rectLabel.style.display='none';
+  rectAnchor=null;
+}
+function showRectPreview(r,status,mx,my,info,why){
+  const ok=status==='ok', hint=status==='hint';
+  const w=(r.i1-r.i0+1)*CELL, d=(r.j1-r.j0+1)*CELL;
+  const cx=((r.i0+r.i1+1)/2-G/2)*CELL, cz=((r.j0+r.j1+1)/2-G/2)*CELL;
+  let top=-99;
+  for(let i=r.i0;i<=r.i1;i+=Math.max(1,Math.floor((r.i1-r.i0)/12)))
+    for(let j=r.j0;j<=r.j1;j+=Math.max(1,Math.floor((r.j1-r.j0)/12)))
+      top=Math.max(top,cellTopY(i,j));
+  [rectPrev,rectEdge].forEach(m=>{
+    m.visible=true; m.position.set(cx,top+0.45,cz); m.scale.set(w,1,d);
+    m.material.color.setHex(ok||hint?0xff9a3c:0xe0503c);
+  });
+  const acres=(r.i1-r.i0+1)*(r.j1-r.j0+1)*ACRES_PER_CELL;
+  rectLabel.style.display='block';
+  rectLabel.style.left=Math.min(mx+18,innerWidth-260)+'px';
+  rectLabel.style.top=Math.min(my+18,innerHeight-110)+'px';
+  rectLabel.innerHTML=hint
+    ? `<b>Subdivide</b><br>${why}`
+    : ok
+    ? `<b>${acres.toFixed(2)} acres</b> · ${info.lots} lots · ${info.streetCount} street cells<br>
+       ${info.mapType==='tract'?'Tentative Tract Map (5+ lots)':'Parcel Map (4 or fewer)'}<br>
+       ${{R:'🏠 Residential',C:'🏬 Commercial',I:'🏭 Industrial'}[S.subZone]} · est. ${info.reviewDays} day review`
+    : `<b>${acres.toFixed(2)} acres</b><br><span class="bad">${why}</span>`;
+}
+
+/* ---------- tentative map modal ---------- */
+function openMapModal(r){
+  const v=rectValidity(r.i0,r.j0,r.i1,r.j1);
+  if(!v.ok){ toast('📐 '+v.why,true); return; }
+  const info=mapActInfo(r.i0,r.j0,r.i1,r.j1,S.subZone);
+  if(info.lots>6&&info.streetCount===0&&info.plan.lots.some(([i,j])=>!hasRoadAccess(i,j))){
+    toast('📐 No workable street layout — try a shape that fronts the road more directly.',true); return;
+  }
+  pendingRect={r,info};
+  const zn={R:'Residential',C:'Commercial',I:'Industrial'}[S.subZone];
+  const [ceqaText,ceqaCls]=CEQA_LABEL[info.ceqa];
+  document.getElementById('mmTitle').textContent=info.mapType==='tract'?'📐 Tentative Tract Map':'📐 Tentative Parcel Map';
+  document.getElementById('mmBody').innerHTML=`
+    <div class="mapSect">The land</div>
+    <div class="mapRow"><span>Gross area</span><b>${info.acres.toFixed(2)} acres</b></div>
+    <div class="mapRow"><span>Proposed use</span><b>${zn}</b></div>
+    <div class="mapRow"><span>Lots created</span><b>${info.lots}</b></div>
+    <div class="mapRow"><span>Public streets dedicated to the city</span><b>${info.streetCount} cells</b></div>
+    <div class="mapSect">Review</div>
+    <div class="mapRow"><span>Map type</span><b>${info.mapType==='tract'?'Tract Map — Planning Commission hearing':'Parcel Map — staff level'}</b></div>
+    <div class="mapRow"><span>CEQA determination</span><b><span class="ceqaTag ${ceqaCls}">${ceqaText}</span></b></div>
+    ${info.sensitive?`<div class="mapRow sub"><span>Touches the ${MAP.ceqaWaterLabel} — full study required</span><b></b></div>`:''}
+    ${S.policies.sb35?`<div class="mapRow sub"><span>SB 35 streamlining is in effect — ministerial review</span><b></b></div>`:''}
+    <div class="mapRow"><span>Estimated review time</span><b>${info.reviewDays} days</b></div>
+    <div class="mapSect">Money</div>
+    <div class="mapRow"><span>City staff, engineering &amp; plan check</span><b class="neg">−${fmt$(info.staffCost)}</b></div>
+    <div class="mapRow"><span>Impact fees due at recordation</span><b class="pos">+${fmt$(info.feeTotal)}</b></div>
+    ${info.schedule.map(([n,v])=>`<div class="mapRow sub"><span>${n}</span><b>${fmt$(v)} × ${info.lots}</b></div>`).join('')}
+    <div class="mapRow"><span>New street maintenance, forever</span><b class="neg">−${fmt$(info.maint)}/mo</b></div>`;
+  document.getElementById('mmSubmit').disabled=S.money<info.staffCost;
+  document.getElementById('mmSubmit').textContent=S.money<info.staffCost?'Cannot afford filing':'Submit to Planning';
+  document.getElementById('mapModal').style.display='flex';
+}
+document.getElementById('mmCancel').onclick=()=>{ document.getElementById('mapModal').style.display='none'; pendingRect=null; };
+document.getElementById('mmSubmit').onclick=()=>{
+  if(!pendingRect) return;
+  const {r,info}=pendingRect;
+  if(S.money<info.staffCost) return;
+  spend(info.staffCost);
+  const tract=(info.mapType==='tract'?'Tract No. ':'Parcel Map No. ')+(4000+Math.floor(Math.random()*5600));
+  const p=createParcel(r.i0,r.j0,r.i1,r.j1,S.subZone,info.plan,
+    {reviewDays:info.reviewDays,mapType:info.mapType,ceqa:info.ceqa,fees:info.feeTotal,staffCost:info.staffCost,tract});
+  document.getElementById('mapModal').style.display='none';
+  pendingRect=null;
+  advise(`📐 <b>${tract}</b> filed — ${info.lots} lots on ${info.acres.toFixed(1)} acres. ${info.ceqa==='eir'?'An EIR is required, so this will take a while.':info.mapType==='tract'?'It goes to the Planning Commission after environmental review.':'Staff will process it.'}`);
+};
+
+/* ---------- Planning Commission decision ---------- */
+function decideMap(p){
+  let appealP=clamp(0.30-S.approval/250,0,0.28);
+  if(p.ceqa==='eir') appealP+=0.18;
+  if(p.lots.length>40) appealP+=0.08;
+  if(p.mapType==='parcel') appealP*=0.3;
+  if(S.policies.sb35) appealP*=0.15;
+  if(!p.appealed&&Math.random()<appealP){
+    p.appealed=true; p.daysLeft=80; p.totalDays=80;
+    advise(`⚖️ Neighbors have appealed <b>${p.tract}</b> to the City Council, arguing the environmental review was inadequate. 80 more days.${S.policies.sb35?'':' SB 35 streamlining would make infill housing ministerial and end these appeals.'}`,'warn');
+    if(p.signSprite&&p.signSprite.material.map){
+      const s2=textSprite('⚖️ UNDER APPEAL','#e0503c','#ffffff');
+      s2.position.copy(p.signSprite.position); s2.scale.copy(p.signSprite.scale);
+      p.survey.remove(p.signSprite); p.survey.add(s2); p.signSprite=s2;
+    }
+    return;
+  }
+  recordFinalMap(p);
+  S.money+=p.fees; S.monthImpactFees+=p.fees; S.impactFeesTotal+=p.fees; S.tractsRecorded++;
+  advise(`✅ <b>${p.tract} recorded.</b> ${p.lots.length} lots created, ${p.streets.length} street cells dedicated to the city. Impact fees collected: <b>${fmt$(p.fees)}</b>.`);
+  if(S.tractsRecorded===1) advise(`💡 That windfall is one-time. Those streets need maintenance forever, and Prop 13 caps what you can ever collect back in property tax. This is the fiscalization-of-land-use trap every California city lives in.`,'warn');
+}
+
+// ---------- pointer input ----------
+let dragMode=null, lastPX=0, lastPY=0, lastCell=null;
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+canvas.addEventListener('pointerdown',e=>{
+  lastPX=e.clientX; lastPY=e.clientY;
+  if(e.button===2||e.button===1){ dragMode='rotate'; return; }
+  if(e.button===0){
+    if(S.tool==='select'){ dragMode='pan'; canvas.style.cursor='grabbing'; }
+    else if(S.tool==='subdivide'){
+      const p=pickGround(e.clientX,e.clientY);
+      if(p){ dragMode='rect'; rectAnchor={i:p.i,j:p.j}; }
+    }
+    else { dragMode='paint';
+      const p=pickGround(e.clientX,e.clientY);
+      if(p){ applyTool(p.i,p.j,true); lastCell=p.i+','+p.j; } }
+  }
+});
+addEventListener('pointerup',e=>{
+  if(dragMode==='rect'&&rectAnchor){
+    const p=pickGround(e.clientX,e.clientY)||{i:rectAnchor.i,j:rectAnchor.j};
+    const r=rectBounds(rectAnchor,p);
+    const v=rectValidity(r.i0,r.j0,r.i1,r.j1);
+    hideRectPreview();
+    if(v.ok) openMapModal(r);
+    else if((r.i1-r.i0+1)*(r.j1-r.j0+1)>1) toast('📐 '+v.why,true);
+  }
+  dragMode=null; lastCell=null; canvas.style.cursor=S.tool==='select'?'grab':'crosshair';
+});
+canvas.addEventListener('pointermove',e=>{
+  const dx=e.clientX-lastPX, dy=e.clientY-lastPY;
+  lastPX=e.clientX; lastPY=e.clientY;
+  if(dragMode==='rotate'){ camYaw-=dx*0.005; camPitch=clamp(camPitch+dy*0.004,0.28,1.45); applyCam(); return; }
+  if(dragMode==='pan'){
+    const k=camDist*0.0016;
+    const rx=Math.cos(camYaw), rz=-Math.sin(camYaw);
+    const fx=-Math.sin(camYaw), fz=-Math.cos(camYaw);
+    camTarget.x-=(dx*rx-dy*fx)*k; camTarget.z-=(dx*rz-dy*fz)*k;
+    applyCam(); return;
+  }
+  const p=pickGround(e.clientX,e.clientY);
+  if(!p){ hoverMesh.visible=false; hideTip(); return; }
+  if(S.tool==='subdivide'){
+    hoverMesh.visible=false; hideTip();
+    if(!rectAnchor){
+      showRectPreview({i0:p.i,j0:p.j,i1:p.i,j1:p.j},'hint',e.clientX,e.clientY,null,
+        'Drag out raw land touching a street');
+      return;
+    }
+    const r=rectBounds(rectAnchor,p);
+    const v=rectValidity(r.i0,r.j0,r.i1,r.j1);
+    showRectPreview(r,v.ok?'ok':'bad',e.clientX,e.clientY,v.ok?mapActInfo(r.i0,r.j0,r.i1,r.j1,S.subZone):null,v.why);
+    return;
+  }
+  if(S.tool!=='select'){
+    const cell=grid[p.i][p.j];
+    const ok=S.tool==='dozer'?!!(cell.kind||cell.b)
+      :(S.tool==='road'||S.tool==='ave')?((cellBuildable(p.i,p.j)||cellBridgeable(p.i,p.j))&&!cell.kind)
+      :(cellBuildable(p.i,p.j)&&!cell.kind);
+    showHover(p.i,p.j,ok); hideTip();
+    if(dragMode==='paint'&&lastCell!==p.i+','+p.j){ applyTool(p.i,p.j,false); lastCell=p.i+','+p.j; }
+  } else { hoverMesh.visible=false; showTip(p,e.clientX,e.clientY); }
+});
+
+// ---------- tooltip ----------
+const tipEl=document.getElementById('tooltip');
+function hideTip(){ tipEl.style.display='none'; }
+function effResCap(b){
+  let c=RES_CAP[b.level];
+  if(S.policies.adu) c=Math.round(c*1.25);
+  if(S.policies.sb9&&b.level===1) c+=2;
+  return c;
+}
+function showTip(p,mx,my){
+  const cell=grid[p.i][p.j];
+  const par=parcelAt(p.i,p.j);
+  let html='';
+  if(par&&par.state==='pending'){
+    const [ct]=CEQA_LABEL[par.ceqa];
+    tipEl.innerHTML=`<b>${par.tract}</b><br>${par.lots.length} ${{R:'residential',C:'commercial',I:'industrial'}[par.zone]} lots proposed<br>
+      ${par.appealed?'⚖️ Under appeal to the City Council':'📐 '+(par.mapType==='tract'?'Tentative Tract Map in review':'Parcel Map in review')}<br>
+      CEQA: ${ct}<br>${Math.ceil(par.daysLeft)} days until a decision<br>
+      <span style="color:#8f97a8">Bulldoze to withdraw the application</span>`;
+    tipEl.style.display='block';
+    tipEl.style.left=Math.min(mx+16,innerWidth-260)+'px';
+    tipEl.style.top=Math.min(my+16,innerHeight-140)+'px';
+    return;
+  }
+  const lotTag=(par&&par.state==='recorded')
+    ? `<br><span style="color:#8f97a8">${par.tract}${cell.kind==='road'?' · dedicated street':' · Lot '+(par.lots.findIndex(([a,b])=>a===p.i&&b===p.j)+1)}</span>` : '';
+  if(cell.b){
+    const b=cell.b, names={res:'Residential',com:'Commercial',ind:'Industrial',fire:'Fire Station',police:'Police Station',school:'School',park:'Park',well:'Groundwater Well',solar:'Solar Farm',cityhall:'City Hall'};
+    html=`<b>${names[b.kind]||b.kind}${['res','com','ind'].includes(b.kind)?' · Level '+b.level:''}</b><br>`;
+    if(b.state==='ceqa') html+=`${MAP.hasOcean&&nearWaterCell(p.i,p.j)?'🏛 Coastal Commission':'📋 CEQA'} review — ${Math.ceil(b.ceqaLeft)} days left`;
+    else if(b.state==='build') html+=`🚧 Under construction — ${Math.round(b.prog*100)}%`;
+    else if(b.state==='ruin') html+=`💀 Ruins — bulldoze to clear`;
+    else {
+      if(b.kind==='res') html+=`Capacity: ${effResCap(b)} residents<br>`;
+      if(b.kind==='com') html+=`Jobs: ${COM_JOBS[b.level]}<br>`;
+      if(b.kind==='ind') html+=`Jobs: ${IND_JOBS[b.level]}<br>`;
+      if(['res','com','ind'].includes(b.kind)) html+=`Land value: ${Math.round(b.lv)}<br>`;
+      if(b.assessed>0) html+=`Assessed (Prop 13): ${fmt$(b.assessed)}`;
+    }
+    html+=lotTag;
+  } else if(cell.kind==='road'){
+    const cong=cellCong[p.i+','+p.j]||0;
+    html=`<b>${cell.roadType==='ave'?'Avenue':cell.roadType==='bridge'?'Bridge':'Road'}</b><br>Traffic: ${cong<0.4?'light':cong<0.8?'moderate':cong<1.1?'heavy':'gridlock'}`+lotTag;
+  }
+  else if(cell.kind==='zone') html=`<b>${{R:'Residential',C:'Commercial',I:'Industrial'}[cell.zone]} lot</b><br>Vacant — waiting for a builder${hasRoadAccess(p.i,p.j)?'':' — <span style="color:#ff9c5b">no street frontage</span>'}`+lotTag;
+  else {
+    const h=cellH(p.i,p.j);
+    html=`<b>Open land</b><br>Elevation ${Math.round(h*12+(MAP.hasOcean?0:380))} ft`;
+    if(nearWaterCell(p.i,p.j)) html+=`<br>🌊 ${MAP.ceqaWaterLabel} — longer environmental review here`;
+    if(!cellBuildable(p.i,p.j)) html+=cellBridgeable(p.i,p.j)?'<br>🌉 Water — a road here becomes a bridge':'<br><span style="color:#ff9c5b">Too steep or wet to build</span>';
+    else html+='<br><span style="color:#ff9a3c">📐 Unsubdivided — use the Subdivide tool</span>';
+  }
+  tipEl.innerHTML=html;
+  tipEl.style.display='block';
+  tipEl.style.left=Math.min(mx+16,innerWidth-260)+'px';
+  tipEl.style.top=Math.min(my+16,innerHeight-120)+'px';
+}
+
+// ---------- development ----------
+function zonedEmptyCells(z){
+  const out=[];
+  for(let i=0;i<G;i++) for(let j=0;j<G;j++){
+    const c=grid[i][j];
+    if(c.kind==='zone'&&c.zone===z&&!c.b&&hasRoadAccess(i,j)) out.push([i,j]);
+  }
+  return out;
+}
+function tryDevelop(z,kind){
+  const cells=zonedEmptyCells(z);
+  if(!cells.length) return;
+  const [i,j]=cells[Math.floor(Math.random()*cells.length)];
+  const vals={res:RES_VAL,com:COM_VAL,ind:IND_VAL}[kind];
+  startBuilding(i,j,kind,1,{buildDays:36,ceqaDays:ceqaDaysFor(kind,1,i,j),assessed:vals[1]});
+}
+function upgradeBuilding(b){
+  const maxL=b.kind==='ind'?2:3;
+  if(b.level>=maxL) return;
+  const i=b.i,j=b.j,kind=b.kind,nl=b.level+1;
+  demolishBuilding(b,false);
+  const cell=grid[i][j]; cell.kind='zone';
+  const vals={res:RES_VAL,com:COM_VAL,ind:IND_VAL}[kind];
+  const lvMul=0.75+(b.lv||60)/200;
+  startBuilding(i,j,kind,nl,{buildDays:20+nl*16,ceqaDays:ceqaDaysFor(kind,nl,i,j),assessed:Math.round(vals[nl]*lvMul)});
+}
+function serviceNear(i,j,kind,r){
+  for(const b of allBuildings)
+    if(b.kind===kind&&b.state==='done'&&Math.abs(b.i-i)<=r&&Math.abs(b.j-j)<=r) return true;
+  return false;
+}
+function indNear(i,j,r){
+  for(const b of allBuildings)
+    if(b.kind==='ind'&&b.state==='done'&&Math.abs(b.i-i)<=r&&Math.abs(b.j-j)<=r) return true;
+  return false;
+}
+function maxCongNear(i,j,r){
+  let m=0;
+  for(let dx=-r;dx<=r;dx++) for(let dz=-r;dz<=r;dz++){
+    const c=cellCong[(i+dx)+','+(j+dz)]; if(c>m) m=c;
+  }
+  return m;
+}
+function landValueAt(i,j){
+  let lv=44;
+  if(serviceNear(i,j,'park',5)) lv+=22;
+  if(serviceNear(i,j,'school',9)) lv+=15;
+  if(serviceNear(i,j,'police',12)) lv+=8;
+  lv+=clamp(cellH(i,j)*1.1,0,12);
+  if(MAP.hasOcean){ const c=cellCenter(i,j); const sx=c.x-MAP.shoreX(c.z); if(sx>8&&sx<70) lv+=18; }
+  if(indNear(i,j,3)) lv-=24;
+  lv-=maxCongNear(i,j,2)*22;
+  lv-=S.crime*25;
+  return clamp(lv,5,125);
+}
+function recount(){
+  let hc=0,cj=0,ij=0,assessed=0;
+  allBuildings.forEach(b=>{
+    if(b.state!=='done') return;
+    if(b.kind==='res') hc+=effResCap(b);
+    else if(b.kind==='com') cj+=COM_JOBS[b.level];
+    else if(b.kind==='ind') ij+=IND_JOBS[b.level];
+    assessed+=b.assessed;
+  });
+  S.housingCap=hc; S.comJobs=cj; S.indJobs=ij; S.totalAssessed=assessed;
+}
+function fireRiskNow(){
+  return clamp((1-MAP.green[S.month])*(S.drought?1.4:1)*(1-S.reservoir*0.15)*MAP.fireMul,0,1.2);
+}
+
+// ---------- traffic ----------
+function computeTraffic(){
+  for(const k in cellCong) delete cellCong[k];
+  // front-door trips load only the streets a building actually fronts
+  const local={};
+  allBuildings.forEach(b=>{
+    if(b.state!=='done'||!['res','com','ind'].includes(b.kind)) return;
+    const trips=b.level*(b.kind==='res'?2.2:3.0);
+    const near=[];
+    for(let dx=-1;dx<=1;dx++) for(let dz=-1;dz<=1;dz++){
+      const k=(b.i+dx)+','+(b.j+dz);
+      if(roadNet.has(k)) near.push(k);
+    }
+    if(!near.length) return;
+    const per=trips*3/near.length;
+    near.forEach(k=>local[k]=(local[k]||0)+per);
+  });
+  // through-traffic bleeds onto connecting streets — averaged, not summed, so it
+  // concentrates on the routes everyone shares instead of exploding everywhere
+  const through={};
+  for(const k of roadNet){
+    const [i,j]=k.split(',').map(Number);
+    const nb=roadNeighbors(i,j);
+    if(!nb.length) continue;
+    let sum=0; nb.forEach(([a,b2])=>sum+=(local[a+','+b2]||0));
+    through[k]=sum/nb.length*0.5;
+  }
+  let sum=0,n=0;
+  for(const k of roadNet){
+    const [i,j]=k.split(',').map(Number);
+    const cap=grid[i][j].roadType==='ave'?85:40;
+    const c=clamp(((local[k]||0)+(through[k]||0))/cap,0,1.5);
+    if(c>0.03) cellCong[k]=c;
+    sum+=c; n++;
+  }
+  S.avgCong=n?sum/n:0;
+}
+
+// ---------- data overlays ----------
+let ovlMode='none';
+document.querySelectorAll('.ovlBtn').forEach(b=>{
+  b.onclick=()=>{
+    ovlMode=b.dataset.ovl;
+    document.querySelectorAll('.ovlBtn').forEach(x=>x.classList.toggle('active',x===b));
+    drawDataOverlay();
+  };
+});
+function drawDataOverlay(){
+  if(!overlayCtx) return;
+  overlayMesh.visible=ovlMode!=='none';
+  overlayCtx.clearRect(0,0,G,G);
+  if(ovlMode==='value'){
+    for(let i=0;i<G;i++) for(let j=0;j<G;j++){
+      const c=grid[i][j];
+      if(!(c.kind==='zone'||c.b)) continue;
+      const lv=c.b&&c.b.lv?c.b.lv:landValueAt(i,j);
+      const t=clamp((lv-10)/100,0,1);
+      overlayCtx.fillStyle=`rgba(${Math.round(230-t*180)},${Math.round(60+t*170)},60,0.8)`;
+      overlayCtx.fillRect(i,j,1,1);
+    }
+  } else if(ovlMode==='traffic'){
+    for(const k of roadNet){
+      const [i,j]=k.split(',').map(Number);
+      const c=cellCong[k]||0, t=clamp(c/1.2,0,1);
+      overlayCtx.fillStyle=`rgba(${Math.round(60+t*195)},${Math.round(200-t*170)},50,0.85)`;
+      overlayCtx.fillRect(i,j,1,1);
+    }
+  }
+  overlayTex.needsUpdate=true;
+}
+
+// ---------- daily tick ----------
+function dailyTick(){
+  S.day++; S.dom++;
+  if(S.dom>30){ S.dom=1; monthlyTick(); }
+  const toClear=[];
+  allBuildings.forEach(b=>{
+    if(b.state==='ruin'){
+      if(b.ruinLeft===undefined) b.ruinLeft=140;
+      if(--b.ruinLeft<=0) toClear.push(b);
+      return;
+    }
+    if(b.state==='ceqa'){
+      b.ceqaLeft--;
+      if(b.ceqaLeft<=0){ b.state='build'; if(b.sign){ cityG.remove(b.sign); b.sign=null; } }
+    } else if(b.state==='build'){
+      b.prog+=1/b.buildDays;
+      b.group.scale.y=Math.max(0.02,Math.min(1,b.prog));
+      if(b.prog>=1){
+        finishBuilding(b);
+        if(b.kind==='res'&&S.rhna) S.rhna.built+=RES_UNITS[b.level];
+        if(b.kind==='cityhall') advise('🏛 City Hall opened! Your council chambers await.');
+      }
+    }
+  });
+  if(toClear.length){
+    toClear.forEach(b=>demolishBuilding(b,false));
+    if(!S._rebuiltOnce){ S._rebuiltOnce=true;
+      advise('🧹 Insurance has cleared the burned-out lots. They are vacant and buildable again — rebuilding takes a few months, but the land is not lost.'); }
+  }
+  recount();
+  // utilities
+  let wells=0,solar=0,pUse=0;
+  allBuildings.forEach(b=>{ if(b.state!=='done') return;
+    if(b.kind==='well') wells++;
+    if(b.kind==='solar') solar++;
+    if(['res','com','ind'].includes(b.kind)) pUse+=b.level*2;
+  });
+  const wellOut=MAP.wellOut*(S.drought?0.6:1)*(0.55+S.reservoir*0.45);
+  S.waterCap=Math.round(wells*wellOut);
+  S.waterUse=Math.round((S.pop*1.0+(S.comJobs+S.indJobs)*0.4)*(S.policies.conserve?0.8:1)*(S.heatwave?1.25:1));
+  S.powerCap=Math.round(solar*260*MAP.solarMul);
+  S.powerUse=Math.round(pUse+S.pop*0.2);
+  S.waterOK=S.waterCap>=S.waterUse||S.waterUse===0;
+  S.powerOK=S.powerCap>=S.powerUse||S.powerUse===0;
+  // demand
+  const jobs=S.comJobs+S.indJobs;
+  const apprMul=clamp(0.5+S.approval/100,0.5,1.4);
+  // California has a chronic housing shortage — what you entitle gets occupied.
+  // Local jobs and a well-run city push occupancy toward full.
+  const jobsPerCap=S.housingCap>0?jobs/(S.housingCap*0.5):0;
+  S.occupancy=clamp(0.80+0.18*clamp(jobsPerCap,0,1.2)+(S.approval-50)/400,0.55,0.99);
+  // pressure to entitle MORE housing: strong by default, tempered when homes badly
+  // outrun the local job base
+  S.dR=clamp(0.35+(jobs*1.2+60-S.housingCap*0.55)/220,-0.4,1)*apprMul;
+  S.dC=clamp((S.pop*0.42-S.comJobs)/40,-1,1);
+  S.dI=clamp((S.pop*0.5-S.indJobs)/55,-1,1);
+  if(!S.waterOK||!S.powerOK){ S.dR=Math.min(S.dR,-0.2); S.dC=Math.min(S.dC,0); S.dI=Math.min(S.dI,0); }
+  if(S.waterOK&&S.powerOK){
+    // more vacant platted lots = more builders working at once
+    const vacant=zonedEmptyCells('R').length+zonedEmptyCells('C').length+zonedEmptyCells('I').length;
+    const crews=clamp(Math.ceil(vacant/25),1,4);
+    for(let k=0;k<crews;k++){
+      if(S.dR>0.08&&Math.random()<S.dR*0.9) tryDevelop('R','res');
+      if(S.dC>0.08&&Math.random()<S.dC*0.8) tryDevelop('C','com');
+      if(S.dI>0.08&&Math.random()<S.dI*0.8) tryDevelop('I','ind');
+    }
+  }
+  const targetPop=S.housingCap*S.occupancy;
+  S.pop+=(targetPop-S.pop)*0.035;
+  if(!S.waterOK) S.pop*=0.997;
+  S.pop=Math.max(0,S.pop);
+  parcels.forEach(p=>{
+    if(p.state!=='pending') return;
+    p.daysLeft--;
+    if(p.daysLeft<=0) decideMap(p);
+  });
+  if(S.floodTimer>0){ S.floodTimer--; if(S.floodTimer===0&&waterMesh) waterMesh.position.y=MAP.waterY; }
+  hazardTick();
+  if(!S.incorporated&&S.pop>=INC_POP) document.getElementById('incorporateBtn').style.display='block';
+}
+
+// ---------- monthly ----------
+function monthlyTick(){
+  S.month++;
+  if(S.month>11){ S.month=0; S.year++; yearlyTick(); }
+  S.heatwave=false;
+  paintTerrain(MAP.green[S.month]*(S.drought?0.55:1),S.month);
+  if(S.month>=10||S.month<=2) S.reservoir=clamp(S.reservoir+0.07*(S.drought?0.3:1),0,1);
+  else S.reservoir=clamp(S.reservoir-0.045,0.05,1);
+  // Prop 13 drift
+  allBuildings.forEach(b=>{ if(b.assessed>0) b.assessed*=Math.pow(1.02,1/12); });
+  // traffic, land value, crime, approval
+  computeTraffic();
+  let covered=0,rci=0;
+  allBuildings.forEach(b=>{
+    if(b.state!=='done'||!['res','com','ind'].includes(b.kind)) return;
+    b.lv=landValueAt(b.i,b.j); rci++;
+    if(serviceNear(b.i,b.j,'police',12)) covered++;
+  });
+  S.crime=rci?clamp((1-covered/rci)*clamp(S.pop/900+0.2,0.2,1)*0.6,0,0.6):0;
+  let parks=0,schools=0;
+  allBuildings.forEach(b=>{ if(b.state!=='done')return; if(b.kind==='park')parks++; if(b.kind==='school')schools++; });
+  let a=58;
+  a+=S.waterOK?4:-18; a+=S.powerOK?3:-12;
+  a-=S.crime*32; a-=S.avgCong*16;
+  a+=clamp(parks/(S.pop/220+1),0,1)*8;
+  a+=clamp(schools/(S.pop/400+1),0,1)*6;
+  a-=S.disasterHeat*14;
+  const jobRatio=S.pop>10?clamp((S.comJobs+S.indJobs)/(S.pop*0.5),0,1.2):1;
+  a+=(jobRatio-0.7)*12;
+  if(S.drought) a-=3;
+  S.approval+=(clamp(a,3,97)-S.approval)*0.3;
+  S.disasterHeat*=0.85;
+  // tell the player what is actually costing them, before it costs them the election
+  if(S.approval<50&&S.day-(S._apprWarn||-999)>200){
+    const gripes=[];
+    if(!S.waterOK) gripes.push('the water system cannot meet demand');
+    if(!S.powerOK) gripes.push('the power supply is short');
+    if(S.crime>0.22) gripes.push('crime — you need police coverage across the whole city');
+    if(S.avgCong>0.55) gripes.push('traffic — upgrade the busy corridors to avenues');
+    if(S.disasterHeat>0.6) gripes.push('the disaster response');
+    if(parksCount()===0) gripes.push('there is nowhere to take the kids — build parks');
+    if(S.pop>250&&schoolsCount()===0) gripes.push('there is no school');
+    if(gripes.length){
+      S._apprWarn=S.day;
+      advise(`😠 Approval is down to <b>${Math.round(S.approval)}%</b>. Residents are unhappy about ${gripes.slice(0,2).join(' and ')}. Below 42% at the next election you are recalled.`,'warn');
+    }
+  }
+  // budget
+  const propShare=S.incorporated?0.14:0.12;
+  const propTax=S.totalAssessed*0.01/12*propShare;
+  let salesTax=0;
+  if(S.incorporated) allBuildings.forEach(b=>{ if(b.kind==='com'&&b.state==='done') salesTax+=[0,600,1800,4500][b.level]; });
+  const tutTax=S.tut?salesTax*0.25:0;
+  const stateGrant=S.incorporated?S.pop*6:0;
+  const sm=staffingMul();
+  let opex=0; allBuildings.forEach(b=>{ if(CIVIC_OPEX[b.kind]&&b.state==='done')
+    opex+=CIVIC_OPEX[b.kind]*(STAFFED[b.kind]?sm:1); });
+  // Municipal payroll and general government. While unincorporated the county
+  // carries public safety, health and social services for you.
+  const perCap=S.pop*(S.incorporated?62:8);
+  const roadCost=roadNet.size*14;
+  let policyCost=0;
+  if(S.policies.retrofit) policyCost+=2000;
+  if(S.policies.defense) policyCost+=1500;
+  if(S.policies.conserve) policyCost+=400;
+  let bondPay=0;
+  S.bonds=S.bonds.filter(bd=>{ bondPay+=bd.pay; bd.left-=bd.pay; return bd.left>0; });
+  const impactFees=S.monthImpactFees; S.monthImpactFees=0;
+  const net=propTax+salesTax+tutTax+stateGrant-opex-perCap-roadCost-policyCost-bondPay;
+  S.money+=net;
+  S.budget={propTax,salesTax,tutTax,stateGrant,opex,perCap,roadCost,policyCost,bondPay,net,propShare,impactFees};
+  if(S.money<0&&!S._brokeWarned){ S._brokeWarned=true; advise('💸 The general fund is in the red! Cut services, issue a bond, or grow the tax base.','bad'); }
+  if(S.money>0) S._brokeWarned=false;
+  // level-ups gated by land value
+  allBuildings.forEach(b=>{
+    if(b.state!=='done'||!['res','com','ind'].includes(b.kind)) return;
+    const d={res:S.dR,com:S.dC,ind:S.dI}[b.kind];
+    if(d<0.15) return;
+    const lvNeed=[0,0,52,72][Math.min(b.level+1,3)];
+    if((b.lv||0)<lvNeed) return;
+    let score=0.22+d*0.35+(b.lv-50)/250;
+    if(Math.random()<score*0.09) upgradeBuilding(b);
+  });
+  // RHNA
+  if(S.rhna){
+    const yrsIn=(S.year-S.rhna.startYear)+S.month/12;
+    const expected=S.rhna.target*(yrsIn/8);
+    if(S.month===5&&yrsIn>=1){
+      if(S.rhna.built>=expected){ if(yrsIn<7.5) advise(`🏘 RHNA check-in: ${S.rhna.built}/${S.rhna.target} units — on track. Sacramento is pleased.`); }
+      else advise(`🏘 RHNA warning: ${S.rhna.built}/${S.rhna.target} units toward the state mandate. Fall behind and the Builder's Remedy kicks in.`,'warn');
+    }
+    if(yrsIn>=4&&S.rhna.built<S.rhna.target*0.3&&!S.rhna.remedied){ S.rhna.remedied=true; buildersRemedy(); }
+  }
+  // elections: November, every 4 years, starting startYear+2
+  if(S.month===10&&(S.year-S.startYear)%4===2&&S.year>S.startYear) runElection();
+  // seasonal events
+  if((S.month===6||S.month===7)&&(MAP===MAPS.valley||MAP===MAPS.desert)&&Math.random()<0.4){
+    S.heatwave=true;
+    advise('🥵 <b>Heat wave.</b> '+(MAP===MAPS.desert?'118°F in the shade.':'Triple digits across the valley.')+' Water use spikes this month.','warn');
+  }
+  if(S.month>=0&&S.month<=2&&MAP.floodP>0&&!S.drought&&Math.random()<MAP.floodP*0.35) floodEvent();
+  if(ovlMode!=='none') drawDataOverlay();
+}
+function yearlyTick(){
+  const was=S.drought;
+  S.drought=S.drought?Math.random()<0.55:Math.random()<MAP.droughtP;
+  if(S.drought&&!was) advise('🏜 The DWR declares a <b>drought year</b>. Well output down, fire risk up.','warn');
+  if(!S.drought&&was) advise('🌧 Atmospheric rivers return! The drought is over.');
+}
+function buildersRemedy(){
+  const cells=[...zonedEmptyCells('R'),...zonedEmptyCells('C')];
+  if(!cells.length) return;
+  const [i,j]=cells[Math.floor(Math.random()*cells.length)];
+  grid[i][j].zone='R';
+  startBuilding(i,j,'res',3,{buildDays:50,ceqaDays:0,assessed:RES_VAL[3]});
+  advise('⚖️ <b>Builder\'s Remedy!</b> The city failed its RHNA housing element, so a developer is building big — and state law says you can\'t stop it.','bad');
+}
+
+// ---------- elections ----------
+function runElection(){
+  S.termCount++;
+  let tutMsg='';
+  if(S.tutPending){
+    if(S.approval>=52){ S.tut=true; tutMsg=' Measure T (¼¢ sales tax) <b>passed</b>.'; }
+    else tutMsg=' Measure T (¼¢ sales tax) <b>failed</b> — Prop 218 requires voter approval, and the voters said no.';
+    S.tutPending=false;
+  }
+  if(S.approval>=42){
+    advise(`🗳 <b>Re-elected!</b> ${Math.round(S.approval)}% approval carries you to another term.${tutMsg}`);
+  } else {
+    const m=document.getElementById('recallModal');
+    document.getElementById('recallText').innerHTML=`With approval at just <b>${Math.round(S.approval)}%</b>, the voters of ${S.cityName} have chosen a new mayor. Between ${S.crime>0.3?'crime, ':''}${S.avgCong>0.4?'traffic, ':''}${!S.waterOK?'the water crisis, ':''}and everything else, they wanted change.${tutMsg}`;
+    document.getElementById('recallStats').innerHTML=`
+      <div class="statCard"><div class="n">${fmtN(S.pop)}</div><div class="l">Population</div></div>
+      <div class="statCard"><div class="n">${S.year-S.startYear}</div><div class="l">Years in office</div></div>
+      <div class="statCard"><div class="n">${fmt$(S.totalAssessed||0)}</div><div class="l">Assessed value</div></div>
+      <div class="statCard"><div class="n">${Math.round(S.approval)}%</div><div class="l">Final approval</div></div>`;
+    m.style.display='flex';
+    S.speed=0;
+    document.querySelectorAll('.speedBtn').forEach(x=>x.classList.toggle('active',x.dataset.sp==='0'));
+  }
+}
+document.getElementById('recallContinueBtn').onclick=()=>{
+  document.getElementById('recallModal').style.display='none';
+  S.approval=55; S.disasterHeat=0;
+  advise('🤝 A fresh face takes office. The voters are willing to give city hall another chance.');
+  S.speed=1;
+  document.querySelectorAll('.speedBtn').forEach(x=>x.classList.toggle('active',x.dataset.sp==='1'));
+};
+
+// ---------- hazards ----------
+function floodEvent(){
+  if(waterMesh){ waterMesh.position.y=MAP.waterY+1.15; S.floodTimer=22; }
+  let hit=0;
+  allBuildings.forEach(b=>{
+    if(b.state!=='done'||!['res','com','ind'].includes(b.kind)) return;
+    const c=cellCenter(b.i,b.j);
+    if(MAP.nearWater(c.x,c.z)&&Math.random()<0.3){ demolishBuilding(b,true); hit++; }
+  });
+  S.disasterHeat+=0.8;
+  advise(`🌊 <b>Flood!</b> An atmospheric river overtops the ${MAP===MAPS.valley?'canal levees':'banks'}. ${hit?hit+' building'+(hit>1?'s':'')+' destroyed in the flood zone.':'The flood zone was empty — this time.'}`,'bad');
+}
+function hazardTick(){
+  const risk=fireRiskNow();
+  if(S.month>=5&&S.month<=10&&burning.size<50){
+    if(Math.random()<0.004*risk*Math.min(1.6,1+allBuildings.length*0.004)){
+      const liveTrees=trees.filter(t=>t.alive);
+      if(liveTrees.length){
+        const t=liveTrees[Math.floor(Math.random()*liveTrees.length)];
+        igniteCell(Math.floor(t.x/CELL+G/2),Math.floor(t.z/CELL+G/2),t.idx);
+        advise('🔥 <b>Wildfire ignition</b> in the hills! Fire stations respond within their districts.','bad');
+      }
+    }
+  }
+  const toIgniteTrees=[], toIgniteCells=[], toOut=[], toExt=[];
+  burning.forEach((f,key)=>{
+    const fx=f.isTree?trees[f.treeIdx].x:cellCenter(f.i,f.j).x;
+    const fz=f.isTree?trees[f.treeIdx].z:cellCenter(f.i,f.j).z;
+    const inDistrict=allBuildings.some(b=>b.kind==='fire'&&b.state==='done'&&Math.abs(b.i-f.i)<=11&&Math.abs(b.j-f.j)<=11);
+    const spreadMul=(S.policies.defense?0.5:1)*(0.4+risk*0.8)*(inDistrict?0.45:1);
+    trees.forEach(t=>{
+      if(!t.alive) return;
+      const d=(t.x-fx)*(t.x-fx)+(t.z-fz)*(t.z-fz);
+      if(d<81&&d>0.1&&Math.random()<0.30*spreadMul) toIgniteTrees.push(t.idx);
+    });
+    for(let dx=-1;dx<=1;dx++) for(let dz=-1;dz<=1;dz++){
+      const a=f.i+dx,b=f.j+dz;
+      if(a<0||b<0||a>=G||b>=G) continue;
+      const c=grid[a][b];
+      if(c.b&&c.b.state==='done'&&Math.random()<0.20*spreadMul) toIgniteCells.push([a,b]);
+    }
+    const protectedBy=allBuildings.some(b=>b.kind==='fire'&&b.state==='done'&&Math.abs(b.i-f.i)<=11&&Math.abs(b.j-f.j)<=11);
+    if(protectedBy&&Math.random()<0.62){ toExt.push(key); return; }
+    f.daysLeft--;
+    if(f.daysLeft<=0) toOut.push(key);
+  });
+  toExt.forEach(extinguish);
+  toOut.forEach(k=>{ const f=burning.get(k); if(f&&!f.isTree) S.disasterHeat+=0.25; burnOut(k); });
+  if(burning.size<50){
+    toIgniteTrees.slice(0,6).forEach(idx=>{ const t=trees[idx]; if(t.alive) igniteCell(Math.floor(t.x/CELL+G/2),Math.floor(t.z/CELL+G/2),idx); });
+    toIgniteCells.slice(0,4).forEach(([a,b])=>igniteCell(a,b));
+  }
+  if(Math.random()<0.0007*MAP.quakeMul){
+    const mag=4.6+Math.random()*2.4;
+    shakeAmt=Math.pow(mag-4,2)*0.4;
+    let destroyed=0;
+    allBuildings.forEach(b=>{
+      if(b.state!=='done'||!['res','com','ind'].includes(b.kind)) return;
+      const p=clamp((mag-5.0)*0.09,0,0.4)*(S.policies.retrofit?0.25:1);
+      if(Math.random()<p){ demolishBuilding(b,true); destroyed++; }
+    });
+    S.disasterHeat+=destroyed>0?1:0.2;
+    if(destroyed>0) advise(`🫨 <b>M${mag.toFixed(1)} earthquake!</b> ${destroyed} building${destroyed>1?'s':''} destroyed.${S.policies.retrofit?'':' A retrofit program would have helped.'}`,'bad');
+    else advise(`🫨 M${mag.toFixed(1)} earthquake rattles the area — no major damage.`,'warn');
+  }
+}
+
+// ---------- incorporation ----------
+document.getElementById('incorporateBtn').onclick=()=>{
+  document.getElementById('incModal').style.display='flex';
+  document.getElementById('cityNameInput').focus();
+};
+document.getElementById('incConfirmBtn').onclick=()=>{
+  const nm=document.getElementById('cityNameInput').value.trim()||MAP.name;
+  S.incorporated=true; S.cityName='City of '+nm;
+  document.getElementById('incModal').style.display='none';
+  document.getElementById('incorporateBtn').style.display='none';
+  refreshCityLabel();
+  S.rhna={target:Math.max(60,Math.round(S.housingCap*0.6)),built:0,startYear:S.year,remedied:false};
+  advise(`🎉 <b>${S.cityName} is incorporated!</b> You now collect the 1% Bradley-Burns sales tax — and you now pay for your own police, payroll and general government. Watch the budget closely for a few months. HCD has assigned your RHNA target: <b>${S.rhna.target} units in 8 years</b>. Build a City Hall!`);
+  advise(`💡 Your property tax share went from 12¢ to only 14¢ on the dollar — post-1978 cities get almost nothing. <b>Commercial development is now your budget.</b> Subdivide retail, and let it grow to level 2 and 3.`,'warn');
+};
+function refreshCityLabel(){
+  document.getElementById('cityName').innerHTML=`${S.cityName}<small>${S.incorporated?'Incorporated '+S.year:'Unincorporated'} · ${MAP.county}, CA</small>`;
+}
+
+// ---------- panels ----------
+let openPanel=null;
+document.querySelectorAll('.panelBtn').forEach(b=>{
+  b.onclick=()=>{
+    const p=b.dataset.panel;
+    if(openPanel===p) openPanel=null;
+    else { openPanel=p; if(p==='advisor'){ unread=0; updateBadge(); } }
+    document.querySelectorAll('.panelBtn').forEach(x=>x.classList.toggle('active',x.dataset.panel===openPanel));
+    renderPanel();
+  };
+});
+document.querySelectorAll('.speedBtn').forEach(b=>{
+  b.onclick=()=>{ S.speed=+b.dataset.sp;
+    document.querySelectorAll('.speedBtn').forEach(x=>x.classList.toggle('active',x===b)); };
+});
+function parksCount(){ return allBuildings.filter(b=>b.kind==='park'&&b.state==='done').length; }
+function schoolsCount(){ return allBuildings.filter(b=>b.kind==='school'&&b.state==='done').length; }
+function fiscalHealth(){
+  const b=S.budget; if(b.net===undefined||S.pop<5) return '';
+  const inPer=(b.propTax+b.salesTax+b.tutTax+b.stateGrant)/S.pop*12;
+  const outPer=(b.opex+(b.perCap||0)+b.roadCost+b.policyCost+b.bondPay)/S.pop*12;
+  const retail=b.salesTax+b.tutTax, tax=b.propTax+b.stateGrant;
+  let diag;
+  if(b.net>=0) diag='You are running a surplus. Bank it — the next drought or earthquake will want it.';
+  else if(!S.incorporated) diag='Unincorporated, so the county keeps 88¢ of every property-tax dollar and you collect <b>no sales tax at all</b>. Reaching cityhood is the single biggest fix available to you.';
+  else if(retail<tax*0.6) diag='Your revenue is almost all property tax, and Prop 13 caps that. California cities close this gap with <b>retail</b> — zone and subdivide more commercial, and let it grow to level 2 and 3.';
+  else if(b.opex+(b.perCap||0)>(b.propTax+b.salesTax+b.stateGrant)*0.9) diag='Services are outrunning the tax base. Either the city is over-staffed for its size, or you built stations and schools ahead of the rooftops that pay for them.';
+  else diag='The gap is close. A ¼¢ Measure T, or a few more level-2 storefronts, would cover it.';
+  return `<div class="lawNote"><b>Fiscal health</b><br>
+    Revenue per resident: ${fmt$(inPer)}/yr · Cost per resident: ${fmt$(outPer)}/yr<br>
+    Municipal cost per resident: ${fmt$((b.perCap||0)/S.pop*12)}/yr<br>
+    Retail vs. tax revenue: ${Math.round(retail/Math.max(tax+retail,1)*100)}% sales · ${Math.round(tax/Math.max(tax+retail,1)*100)}% property &amp; state<br>
+    <span style="color:#e8dcc0">${diag}</span></div>`;
+}
+function renderPanel(){
+  const sp=document.getElementById('sidepanel');
+  sp.classList.toggle('open',!!openPanel);
+  if(!openPanel) return;
+  const T=document.getElementById('panelTitle'), B=document.getElementById('panelBody');
+  if(openPanel==='budget'){
+    T.textContent='💰 Monthly Budget';
+    const b=S.budget;
+    B.innerHTML=(b.net===undefined?'<p style="color:#a8b0c0">First budget posts at month\'s end.</p>':`
+      <div class="brow"><span>Property tax (Prop 13, ${Math.round(b.propShare*100)}% share)</span><b class="pos">+${fmt$(b.propTax)}</b></div>
+      <div class="brow"><span>Sales tax (Bradley-Burns 1%)</span><b class="pos">+${fmt$(b.salesTax)}</b></div>
+      ${S.tut?`<div class="brow"><span>Measure T (¼¢ TUT)</span><b class="pos">+${fmt$(b.tutTax)}</b></div>`:''}
+      <div class="brow"><span>State subventions (VLF-in-lieu, gas tax)</span><b class="pos">+${fmt$(b.stateGrant)}</b></div>
+      ${b.impactFees?`<div class="brow"><span>Subdivision impact fees (one-time)</span><b class="pos">+${fmt$(b.impactFees)}</b></div>`:''}
+      <div class="brow"><span>City facilities</span><b class="neg">−${fmt$(b.opex)}</b></div>
+      <div class="brow"><span>${S.incorporated?'Municipal payroll &amp; general government':'County service share'}</span><b class="neg">−${fmt$(b.perCap||0)}</b></div>
+      <div class="brow"><span>Road maintenance</span><b class="neg">−${fmt$(b.roadCost)}</b></div>
+      <div class="brow"><span>Policy programs</span><b class="neg">−${fmt$(b.policyCost)}</b></div>
+      ${b.bondPay?`<div class="brow"><span>Bond debt service (${S.bonds.length} active)</span><b class="neg">−${fmt$(b.bondPay)}</b></div>`:''}
+      <div class="brow total"><span>Net</span><b class="${b.net>=0?'pos':'neg'}">${b.net>=0?'+':'−'}${fmt$(Math.abs(b.net))}</b></div>`)+`
+      <button class="actionBtn" id="bondBtn">🏦 Issue $500k municipal bond (repay ~$5.5k/mo × 10 yrs)</button>
+      <button class="actionBtn" id="tutBtn" ${S.tut||S.tutPending||!S.incorporated?'disabled':''}>🗳 ${S.tut?'Measure T is law':S.tutPending?'Measure T is on the ballot':'Put ¼¢ sales tax on the next ballot (Prop 218)'}</button>
+      <div class="lawNote"><b>Prop 13 (1978):</b> property tax capped at 1% of assessed value, growth capped at 2%/yr until redevelopment. ${S.incorporated?'Incorporating after 1978 made you a <b>&quot;no-and-low property tax city&quot;</b> — you keep only ~14¢ of each dollar, permanently. The county, schools and state take the rest. This is why California cities chase <b>retail</b>.':'The county keeps most of it. Incorporating barely changes that — the real prize is the 1% sales tax.'}</div>
+      <div class="lawNote"><b>Total assessed value:</b> ${fmt$(S.totalAssessed||0)}</div>
+      <div class="lawNote"><b>Impact fees collected to date:</b> ${fmt$(S.impactFeesTotal||0)} across ${S.tractsRecorded||0} recorded map${S.tractsRecorded===1?'':'s'}. One-time money; the streets are forever.</div>
+      ${fiscalHealth()}`;
+    const bb=document.getElementById('bondBtn');
+    if(bb) bb.onclick=()=>{ S.money+=500000; S.bonds.push({left:660000,pay:5500}); advise('🏦 $500,000 bond issued. Debt service starts this month.'); renderPanel(); };
+    const tb=document.getElementById('tutBtn');
+    if(tb&&!tb.disabled) tb.onclick=()=>{ S.tutPending=true; advise('🗳 Measure T — a ¼¢ transactions & use tax — will appear on the next November ballot. Prop 218 says the voters decide.'); renderPanel(); };
+  } else if(openPanel==='laws'){
+    T.textContent='⚖️ California Laws & Policies';
+    const pol=(id,name,desc,locked)=>`
+      <label class="pol ${locked?'locked':''}"><input type="checkbox" data-pol="${id}" ${S.policies[id]?'checked':''} ${locked?'disabled':''}>
+      <span><span class="pname">${name}</span><br><span class="pdesc">${desc}</span></span></label>`;
+    B.innerHTML=`
+      ${pol('adu','ADU Ordinance','Permit accessory dwelling units by right. Residential capacity +25%.')}
+      ${pol('sb9','SB 9 Lot Splits','Duplexes on single-family lots. Small homes house 2 extra residents.')}
+      ${pol('retrofit','Seismic Retrofit Program','$2,000/mo. Earthquake damage cut 75%.')}
+      ${pol('defense','Defensible Space Enforcement','$1,500/mo. PRC §4291 inspections — wildfire spread halved.')}
+      ${pol('conserve','Water Conservation Rules','$400/mo. Water use −20%.')}
+      ${pol('sb35','SB 35 / CEQA Streamlining','Ministerial infill approvals. Review times cut 75%.',!S.incorporated)}
+      <div class="lawNote"><b>CEQA (1970):</b> environmental review before big projects. Here: level-3 buildings, industry, and anything in the ${MAP.ceqaWaterLabel} face delays${S.policies.sb35?' — currently streamlined by SB 35':''}.${MAP.hasOcean?' The <b>Coastal Commission</b> adds extra review inside the coastal zone.':''}</div>
+      ${S.rhna?`<div class="lawNote"><b>RHNA mandate:</b> ${S.rhna.built} / ${S.rhna.target} units (8-yr cycle)
+        <div class="rhnaBar"><i style="width:${clamp(S.rhna.built/S.rhna.target*100,0,100)}%"></i></div>
+        Fail the Housing Element and the <b>Builder's Remedy</b> overrides your zoning.</div>`
+        :'<div class="lawNote"><b>RHNA:</b> applies once you incorporate — Sacramento will assign a housing target.</div>'}
+      <div class="lawNote"><b>Civic health:</b> Approval ${Math.round(S.approval)}% · Crime ${Math.round(S.crime*100)}% · Congestion ${Math.round(S.avgCong*100)}%<br>Elections every 4 years each November. Under 42% approval = recall.</div>`;
+    B.querySelectorAll('input[data-pol]').forEach(inp=>{
+      inp.onchange=()=>{ S.policies[inp.dataset.pol]=inp.checked; recount(); };
+    });
+  } else if(openPanel==='planning'){
+    T.textContent='📐 Planning & Subdivisions';
+    const pend=parcels.filter(p=>p.state==='pending');
+    const rec=parcels.filter(p=>p.state==='recorded');
+    B.innerHTML=(pend.length?pend.map(p=>{
+      const [ct,cc]=CEQA_LABEL[p.ceqa];
+      return `<div class="mapItem"><div class="t">${p.tract}${p.appealed?' ⚖️':''}</div>
+        <div class="d">${p.lots.length} ${{R:'residential',C:'commercial',I:'industrial'}[p.zone]} lots ·
+        ${((p.i1-p.i0+1)*(p.j1-p.j0+1)*ACRES_PER_CELL).toFixed(1)} ac · <span class="ceqaTag ${cc}">${ct}</span></div>
+        <div class="d">${p.appealed?'Under appeal to the City Council':'In review'} — ${Math.ceil(p.daysLeft)} days left</div>
+        <div class="bar"><i style="width:${clamp((1-p.daysLeft/p.totalDays)*100,0,100)}%"></i></div>
+        <div class="d" style="margin-top:4px">Fees at recordation: <b>${fmt$(p.fees)}</b></div></div>`;
+    }).join(''):'<p style="color:#a8b0c0">No maps in review. Pick the 📐 Subdivide tool and drag out land that touches one of your streets.</p>')
+    +(rec.length?`<div class="mapSect" style="color:#c8a44f">Recorded maps</div>`+rec.map(p=>{
+      const built=p.lots.filter(([i,j])=>grid[i][j].b).length;
+      return `<div class="mapRow"><span>${p.tract}</span><b>${built}/${p.lots.length} lots built</b></div>`;
+    }).join(''):'')
+    +`<div class="lawNote"><b>Subdivision Map Act (Gov. Code §66410):</b> dividing land into 5 or more parcels needs a Tentative Tract Map and a Planning Commission hearing; 4 or fewer can go through as a Parcel Map. Once the Final Map records, the lots legally exist and the streets belong to the city.</div>
+      <div class="lawNote"><b>Frontage:</b> every subdivision must touch an existing public street. Build roads out to the land you want before you subdivide it.</div>`;
+  } else if(openPanel==='advisor'){
+    T.textContent='📋 City Advisor';
+    B.innerHTML=notes.length?notes.map(n=>`<div class="note ${n.cls}">${n.msg}<span class="when">${n.when}</span></div>`).join('')
+      :'<p style="color:#a8b0c0">No news yet. Roads, zones, water and power get a town going.</p>';
+  }
+}
+
+// ---------- HUD ----------
+function refreshHUD(){
+  document.getElementById('sMoney').textContent=fmt$(S.money);
+  document.getElementById('sMoney').className='val '+(S.money<0?'bad':S.money<50000?'warn':'');
+  document.getElementById('sPop').textContent=fmtN(S.pop);
+  document.getElementById('sJobs').textContent=fmtN(S.comJobs+S.indJobs);
+  const ap=document.getElementById('sAppr');
+  ap.textContent=(S.approval>=60?'😊 ':S.approval>=45?'😐 ':'😠 ')+Math.round(S.approval)+'%';
+  ap.className='val '+(S.approval>=60?'good':S.approval>=45?'warn':'bad');
+  document.getElementById('sDate').textContent=MONTHS[S.month]+' '+S.year;
+  const w=document.getElementById('sWater');
+  w.textContent=fmtN(S.waterUse)+'/'+fmtN(S.waterCap);
+  w.className='val '+(S.waterOK?'good':'bad');
+  const pw=document.getElementById('sPower');
+  pw.textContent=fmtN(S.powerUse)+'/'+fmtN(S.powerCap);
+  pw.className='val '+(S.powerOK?'good':'bad');
+  document.querySelector('#dR i').style.height=Math.round(clamp(S.dR,0,1)*100)+'%';
+  document.querySelector('#dC i').style.height=Math.round(clamp(S.dC,0,1)*100)+'%';
+  document.querySelector('#dI i').style.height=Math.round(clamp(S.dI,0,1)*100)+'%';
+  const risk=fireRiskNow(), fr=document.getElementById('fireRisk');
+  const lvl=risk<0.3?['Low','']:risk<0.55?['Moderate','mod']:risk<0.85?['High','high']:['EXTREME','extreme'];
+  fr.textContent='🔥 '+lvl[0]; fr.className=lvl[1];
+  TOOLS.forEach(t=>{
+    const el=document.getElementById('tool_'+t.id); if(!el) return;
+    el.classList.toggle('broke',t.cost>0&&S.money<t.cost);
+    el.classList.toggle('locked',!!(t.locked&&t.locked()));
+  });
+  updateMapBadge();
+  if(openPanel) renderPanel();
+}
+
+// ---------- save / load ----------
+function serialize(){
+  const cells=[];
+  for(let i=0;i<G;i++) for(let j=0;j<G;j++){
+    const c=grid[i][j];
+    if(!c.kind&&!c.b) continue;
+    const e={i,j,k:c.kind,z:c.zone,rt:c.roadType};
+    if(c.b) e.b={k:c.b.kind,l:c.b.level,st:c.b.state,pr:c.b.prog,cl:c.b.ceqaLeft,as:c.b.assessed,lv:c.b.lv};
+    cells.push(e);
+  }
+  const deadTrees=trees.filter(t=>!t.alive).map(t=>t.idx);
+  const {money,day,dom,month,year,startYear,pop,incorporated,cityName,drought,reservoir,approval,crime,tut,tutPending,termCount,disasterHeat}=S;
+  const par=parcels.filter(p=>p.state!=='void').map(p=>({id:p.id,i0:p.i0,j0:p.j0,i1:p.i1,j1:p.j1,z:p.zone,
+    st:p.state,dl:p.daysLeft,td:p.totalDays,mt:p.mapType,cq:p.ceqa,fe:p.fees,tr:p.tract,ap:p.appealed}));
+  return {v:3,map:S.mapId,parcels:par,
+    S:{money,day,dom,month,year,startYear,pop,incorporated,cityName,drought,reservoir,approval,crime,tut,tutPending,termCount,disasterHeat,
+       impactFeesTotal:S.impactFeesTotal,tractsRecorded:S.tractsRecorded},
+    policies:S.policies,rhna:S.rhna,bonds:S.bonds,cells,deadTrees};
+}
+document.getElementById('saveBtn').onclick=()=>{
+  if(!S.started){ toast('Start a city first.'); return; }
+  const blob=new Blob([JSON.stringify(serialize())],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download=(S.cityName.replace(/[^\w]+/g,'-').toLowerCase()||'my-city')+'-'+S.year+'.json';
+  a.click(); URL.revokeObjectURL(a.href);
+  toast('💾 City saved to a file in your downloads.');
+};
+const loadInput=document.getElementById('loadInput');
+document.getElementById('loadBtn').onclick=()=>loadInput.click();
+document.getElementById('loadStartBtn').onclick=()=>loadInput.click();
+loadInput.onchange=()=>{
+  const f=loadInput.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ loadGame(JSON.parse(rd.result)); }catch(err){ toast('⚠️ Could not read that save file.',true); } };
+  rd.readAsText(f);
+  loadInput.value='';
+};
+function loadGame(data){
+  if(!data||!(data.v===2||data.v===3)||!MAPS[data.map]) { toast('⚠️ Not a valid Golden State Builder save.',true); return; }
+  startGame(data.map,true);
+  Object.assign(S,data.S);
+  S.policies=Object.assign(S.policies,data.policies||{});
+  S.rhna=data.rhna||null; S.bonds=data.bonds||[];
+  (data.deadTrees||[]).forEach(removeTree);
+  // roads first
+  (data.cells||[]).filter(e=>e.k==='road').forEach(e=>buildRoad(e.i,e.j,e.rt||'road'));
+  // zones
+  (data.cells||[]).forEach(e=>{ if(e.k==='zone'||(e.b&&e.k!=='road')) if(e.z) setZone(e.i,e.j,e.z); });
+  // buildings
+  (data.cells||[]).forEach(e=>{
+    if(!e.b) return;
+    const b=startBuilding(e.i,e.j,e.b.k,e.b.l,{buildDays:36,ceqaDays:e.b.st==='ceqa'?Math.max(1,Math.round(e.b.cl||30)):0,assessed:e.b.as||0});
+    b.lv=e.b.lv||60;
+    if(e.b.st==='done') finishBuilding(b);
+    else if(e.b.st==='build'){ b.state='build'; b.prog=e.b.pr||0; if(b.sign){ cityG.remove(b.sign); b.sign=null; } }
+    else if(e.b.st==='ruin') demolishBuilding(b,true);
+  });
+  // restore subdivisions (streets & lots already came back as roads and zones)
+  (data.parcels||[]).forEach(d=>{
+    const p={id:d.id,i0:d.i0,j0:d.j0,i1:d.i1,j1:d.j1,zone:d.z,state:d.st,daysLeft:d.dl,totalDays:d.td||d.dl,
+      mapType:d.mt,ceqa:d.cq,fees:d.fe,tract:d.tr,appealed:!!d.ap,streets:[],lots:[],survey:null,lotLines:null};
+    if(d.st==='recorded'){
+      rectCells(d.i0,d.j0,d.i1,d.j1).forEach(([i,j])=>{
+        (grid[i][j].kind==='road'?p.streets:p.lots).push([i,j]);
+      });
+      if(!p.streets.length) p.lots.forEach(([i,j])=>privateAccess.add(i+','+j));
+      parcels.push(p);
+      p.lotLines=makeLotLines(p);
+    } else {
+      const plan=parcelPlan(d.i0,d.j0,d.i1,d.j1,d.z);
+      p.streets=plan.streets; p.lots=plan.lots;
+      parcels.push(p);
+      p.survey=makeSurveyVisual(p);
+    }
+    parcelSeq=Math.max(parcelSeq,d.id||0);
+  });
+  recount(); computeTraffic();
+  paintTerrain(MAP.green[S.month]*(S.drought?0.55:1),S.month);
+  refreshCityLabel(); refreshHUD();
+  if(!S.incorporated&&S.pop>=INC_POP) document.getElementById('incorporateBtn').style.display='block';
+  advise(`📂 Welcome back to <b>${S.cityName}</b> — ${MONTHS[S.month]} ${S.year}, population ${fmtN(S.pop)}.`);
+}
+
+// ---------- photo mode ----------
+function togglePhoto(on){
+  photoMode=on;
+  document.body.classList.toggle('photo',on);
+}
+document.getElementById('photoBtn').onclick=()=>togglePhoto(true);
+document.getElementById('photoExit').onclick=()=>togglePhoto(false);
+
+// ---------- map select / new game ----------
+const mapGrid=document.getElementById('mapGrid');
+Object.entries(MAPS).forEach(([id,m])=>{
+  const card=document.createElement('button');
+  card.className='mapCard';
+  card.innerHTML=`<div class="mapThumb" style="background:${m.thumb}"></div>
+    <div class="mi"><div class="mn">${m.name}</div><div class="mc">${m.county}</div>
+    <div class="md">${m.desc}</div><div class="mh">${m.hazards}</div></div>`;
+  card.onclick=()=>{ startGame(id,false); };
+  mapGrid.appendChild(card);
+});
+function startGame(mapId,silent){
+  MAP=MAPS[mapId];
+  S.mapId=mapId;
+  clearCity();
+  buildWorld(); buildBirds();
+  // reset state
+  Object.assign(S,{money:2000000,day:0,dom:1,month:2,year:2026,startYear:2026,pop:0,housingCap:0,comJobs:0,indJobs:0,
+    dR:0.4,dC:0,dI:0,incorporated:false,cityName:MAP.name,waterUse:0,waterCap:0,powerUse:0,powerCap:0,waterOK:true,powerOK:true,
+    drought:false,reservoir:0.85,floodTimer:0,heatwave:false,rhna:null,speed:1,tool:'select',started:true,
+    budget:{},bonds:[],tut:false,tutPending:false,approval:60,crime:0,disasterHeat:0,avgCong:0,termCount:0,
+    subZone:'R',monthImpactFees:0,impactFeesTotal:0,tractsRecorded:0});
+  S.policies={adu:false,sb9:false,retrofit:false,defense:false,conserve:false,sb35:false};
+  notes.length=0; unread=0; updateBadge();
+  document.getElementById('startOverlay').style.display='none';
+  document.getElementById('incorporateBtn').style.display='none';
+  camTarget.set(MAP.hasOcean?-20:10,3,10); camYaw=0.7; camPitch=0.86; camDist=190; applyCam();
+  setTool('select');
+  document.querySelectorAll('.speedBtn').forEach(x=>x.classList.toggle('active',x.dataset.sp==='1'));
+  refreshCityLabel(); refreshHUD(); drawDataOverlay();
+  if(!silent){
+    const intro={
+      foothills:'👋 Welcome to Dry Creek Valley. Oak foothills, a year-round river, and fire season every summer.',
+      valley:'👋 Welcome to Tule Flats. Flat, cheap land — but the canal floods in wet winters and the wells run deep.',
+      coast:'👋 Welcome to Punta Gaviota. Beautiful, seismic, and heavily reviewed — the Coastal Commission watches the shore.',
+      desert:'👋 Welcome to Yucca Wash. Sun for days — solar farms shine out here (+60%) — but wells barely reach the aquifer.',
+    }[mapId];
+    advise(intro);
+    advise('🧭 <b>How land gets built in California:</b> 1) run a <b>road</b> out to raw land · 2) hit <b>📐 Subdivide</b> and drag a rectangle touching that road · 3) submit the <b>Tentative Map</b> and wait out review · 4) when the Final Map records, streets and lots appear and houses start going up. Add a <b>well</b> and a <b>solar farm</b> or nothing will build.');
+  }
+}
+
+// ---------- main loop ----------
+const DAY_LEN=[Infinity,0.85,0.32,0.11];
+let simAcc=0, uiAcc=0, lastT=performance.now();
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min((now-lastT)/1000,0.1); lastT=now;
+  updateSky(dt,S.started?S.speed:1);
+  camTick(dt);
+  clouds.forEach((c,ix)=>{ c.position.x+=dt*(2.5+ix*0.22); if(c.position.x>700) c.position.x=-700; });
+  const raining=S.started&&(S.month>=10||S.month<=2)&&!S.drought&&MAP.waterY>-50&&(Math.floor(S.day/3)%4===0);
+  rain.visible=raining;
+  if(raining){
+    const p=rainGeo.attributes.position;
+    for(let i=0;i<RAIN_N;i++){ let y=p.getY(i)-dt*95; if(y<0) y=160; p.setY(i,y); }
+    p.needsUpdate=true;
+    rain.position.x=camTarget.x; rain.position.z=camTarget.z;
+  }
+  animateFires(now/1000);
+  birdTick(dt);
+  if(S.started){
+    carTick(dt); pedTick(dt);
+    if(S.speed>0){
+      simAcc+=dt;
+      const dl=DAY_LEN[S.speed];
+      while(simAcc>=dl){ simAcc-=dl; dailyTick(); }
+    }
+    uiAcc+=dt;
+    if(uiAcc>0.25){ uiAcc=0; refreshHUD(); }
+  }
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(loop);
+refreshHUD();
+</script>
+</body>
+</html>
