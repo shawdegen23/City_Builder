@@ -215,7 +215,6 @@
     <button class="ovlBtn active" data-ovl="none">Overlay: Off</button>
     <button class="ovlBtn" data-ovl="value">💰 Land Value</button>
     <button class="ovlBtn" data-ovl="traffic">🚗 Traffic</button>
-    <button class="ovlBtn" data-ovl="power">⚡ Grid</button>
   </div>
   <div id="ctrlHint">🖱 drag: pan · right-drag: rotate · scroll: zoom · WASD pan · Esc: select</div>
 </div>
@@ -986,19 +985,6 @@ function makeEnergy(kind){
     }
     g.add(box(0.6,1.0,0.6,M.indDark,0,0.06,0));
   }
-  else if(kind==='substation'){
-    g.add(box(3.9,0.12,3.9,M.concrete));
-    // transformer banks, a gantry, and a fenced yard
-    for(let k=-1;k<=1;k+=2){
-      g.add(box(1.1,1.2,1.3,M.ind,k*1.0,0.06,-0.9));
-      g.add(cyl(0.16,0.16,0.7,M.indDark,k*1.0,1.26,-0.9,6));
-      g.add(box(0.5,0.45,0.5,M.indDark,k*1.0,1.26,-0.35));
-    }
-    for(let k=-1;k<=1;k+=2) g.add(cyl(0.11,0.11,2.6,M.indDark,k*1.4,0.06,0.9,6));
-    g.add(box(3.1,0.14,0.16,M.indDark,0,2.62,0.9));        // gantry crossarm
-    for(let k=-1;k<=1;k++) g.add(cyl(0.09,0.09,0.42,M.white,k*1.2,2.2,0.9,6));   // insulators
-    g.add(box(0.9,0.7,0.8,M.white,0,0.06,1.6));            // control house
-  }
   return g;
 }
 // ---- data center ----
@@ -1080,7 +1066,7 @@ function makeWater(kind){
   }
   return g;
 }
-const ENERGY_KINDS=['solar','wind','gas','hydro','geo','battery','substation'];
+const ENERGY_KINDS=['solar','wind','gas','hydro','geo','battery'];
 const WATER_KINDS=['well','intake','aqueduct','desal','recycle','cistern','bank'];
 function animateUtilities(dt,t){
   spinners.forEach(r=>{ r.rotation.z+=dt*1.35; });
@@ -1290,47 +1276,6 @@ function hasRoadAccess(i,j){
   for(let dx=-1;dx<=1;dx++) for(let dz=-1;dz<=1;dz++)
     if(roadNet.has((i+dx)+','+(j+dz))) return true;
   return false;
-}
-
-// ---------- transmission corridors ----------
-// Painted cell by cell like a road. A corridor takes the land it crosses, which
-// is the real trade-off: the cheap generation sites are the ones far from load.
-const powerNet=new Set();
-function makeTower(){
-  const g=new THREE.Group();
-  const h=6.4;
-  for(const [ox,oz] of [[-0.42,-0.42],[0.42,-0.42],[-0.42,0.42],[0.42,0.42]])
-    g.add(cyl(0.1,0.16,h,M.indDark,ox,0,oz,5));            // lattice legs, splayed
-  for(const y of [h*0.42,h*0.68]) g.add(box(1.0,0.09,1.0,M.indDark,0,y,0));   // bracing
-  for(const y of [h*0.58,h*0.84]){
-    g.add(box(3.2,0.14,0.16,M.indDark,0,y,0));             // crossarms
-    for(const k of [-1.35,0,1.35]) g.add(cyl(0.07,0.07,0.34,M.white,k,y-0.34,0,5));
-  }
-  g.add(cyl(0.1,0.1,0.55,M.indDark,0,h,0,5));
-  return g;
-}
-function tlineNeighbors(i,j){
-  const out=[];
-  [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz])=>{ if(powerNet.has((i+dx)+','+(j+dz))) out.push([i+dx,j+dz]); });
-  return out;
-}
-function buildTline(i,j){
-  const cc=cellCenter(i,j), y=cellTopY(i,j);
-  const cell=grid[i][j];
-  const g=new THREE.Group();
-  // a graded right-of-way, full cell width so runs read as one continuous corridor,
-  // with a tower every third cell
-  g.add(box(CELL,0.06,CELL,M.tan,cc.x,y-0.02,cc.z));
-  if(((i*31+j*17)%3)===0){ const t=makeTower(); t.position.set(cc.x,y,cc.z); g.add(t); }
-  cityG.add(g);
-  cell.kind='tline'; cell.tlineMesh=g;
-  powerNet.add(i+','+j);
-  clearTreesOnCell(i,j);
-}
-function removeTline(i,j){
-  const cell=grid[i][j];
-  if(cell.tlineMesh){ cityG.remove(cell.tlineMesh); cell.tlineMesh=null; }
-  powerNet.delete(i+','+j);
 }
 
 // ---------- street lights ----------
@@ -1567,7 +1512,7 @@ function clearCity(){
   spinners.length=0; plumes.length=0; plumeSprites.length=0;
   transitLines.length=0; lineSeq=0; draftLine=null; coverageMap=null;
   parcels.length=0; parcelSeq=0;
-  burning.clear(); roadNet.clear(); privateAccess.clear(); powerNet.clear(); powerCov=null;
+  burning.clear(); roadNet.clear(); privateAccess.clear();
   for(const k in cellCong) delete cellCong[k];
   initGrid(); rebuildLights();
 }
@@ -1833,8 +1778,7 @@ const S={
   incorporated:false, cityName:'—',
   waterUse:0, waterCap:0, powerUse:0, powerCap:0, waterOK:true, powerOK:true,
   waterStore:0, waterStoreCap:0, waterFillRate:0, waterDraw:0, waterAvail:0, waterFlow:0, waterStress:0,
-  powerPeak:0, peakCap:0, powerDeliver:0, reserve:1, powerStress:0, gridLimited:false, batteryOut:0,
-  subCap:0, subsLive:0, subsDark:0, unserved:0, unservedPct:0, dataCenters:0, dcWater:0,
+  powerPeak:0, peakCap:0, reserve:1, powerStress:0, batteryOut:0, dataCenters:0, dcWater:0,
   drought:false, reservoir:0.85, floodTimer:0, heatwave:false,
   policies:{adu:false,sb9:false,retrofit:false,defense:false,conserve:false,sb35:false},
   rhna:null, speed:1, tool:'select', started:false, mapId:null,
@@ -1863,7 +1807,7 @@ const COM_JOBS=[0,6,16,45], COM_VAL=[0,900000,2200000,5500000];
 const IND_JOBS=[0,10,26,26], IND_VAL=[0,1100000,2600000,2600000];
 const CIVIC_OPEX={fire:1300,police:1200,school:1900,park:250,cityhall:2200,
   well:320,intake:420,aqueduct:1500,desal:3800,recycle:900,cistern:240,bank:620,
-  solar:260,wind:300,gas:1450,hydro:700,geo:820,battery:340,substation:380,datacenter:2600};
+  solar:260,wind:300,gas:1450,hydro:700,geo:820,battery:340,datacenter:2600};
 // Generation. clean=counts toward SB 100. Output is modified by map and conditions.
 const ENERGY={
   solar:{name:'Solar Farm',ico:'☀️',out:260,clean:true,cost:40000,
@@ -1878,8 +1822,6 @@ const ENERGY={
     note:'Clean baseload that runs day and night, drought or not. Only where the geology allows.'},
   battery:{name:'Battery Storage',ico:'🔋',out:0,clean:true,cost:70000,role:'storage',discharge:300,
     note:'Charges on midday solar and discharges into the evening ramp. Solar produces nothing at 7pm — batteries are the only way renewables can carry your evening peak.'},
-  substation:{name:'Substation',ico:'🔌',out:0,cost:85000,role:'grid',cap:900,radius:11,
-    note:'Steps transmission voltage down to the streets. Generation you cannot deliver is worth nothing: every building must sit inside a substation\'s service area, and each substation can only carry 900 MW of load.'},
 };
 // A data center is an economic-development deal, not a land use that shows up on
 // its own: enormous assessed value, enormous around-the-clock load, real cooling
@@ -1956,8 +1898,6 @@ const TOOLS=[
   {id:'hydro',ico:'🌊',name:'Hydro',cost:180000,cat:'power',needWater:true,mapFlag:'hydro'},
   {id:'geo',ico:'♨️',name:'Geothermal',cost:150000,cat:'power',mapFlag:'geo'},
   {id:'battery',ico:'🔋',name:'Battery',cost:70000,cat:'power'},
-  {id:'substation',ico:'🔌',name:'Substation',cost:85000,cat:'power'},
-  {id:'transmission',ico:'🗼',name:'Transmission',cost:2600,cat:'power'},
   {id:'datacenter',ico:'🖥️',name:'Data Center',cost:250000,cat:'power',locked:()=>!S.incorporated},
 
   {id:'bus',ico:'🚌',name:'Bus Line',cost:25000,cat:'transit'},
@@ -1998,9 +1938,9 @@ function renderToolbar(){
   TOOLS.filter(t=>t.cat===toolCat).forEach(t=>{
     const b=document.createElement('button');
     b.className='tool'; b.id='tool_'+t.id;
-    const out=t.id==='datacenter'?fmtN(DATACENTER.power)+' MW load':t.id==='transmission'?'corridor'
+    const out=t.id==='datacenter'?fmtN(DATACENTER.power)+' MW load'
       :ENERGY[t.id]?(ENERGY[t.id].out?'+'+Math.round(ENERGY[t.id].out*(t.id==='solar'?MAP.solarMul:t.id==='wind'?MAP.windMul:1))+' MW'
-        :ENERGY[t.id].role==='grid'?fmtN(ENERGY[t.id].cap)+' MW':'storage')
+        :'storage')
       :WATERSRC[t.id]?(WATERSRC[t.id].out?'+'+WATERSRC[t.id].out+' af'
         :WATERSRC[t.id].store?fmtN(WATERSRC[t.id].store)+' af store':'−22% use'):'';
     b.innerHTML=`<span class="ico">${t.ico}</span>${t.name}<span class="cost">${t.cost?fmt$(t.cost):''}</span>${out?`<span class="out">${out}</span>`:''}`;
@@ -2089,21 +2029,10 @@ function applyTool(i,j,isClick){
     if(pp&&pp.state==='pending'){ withdrawParcel(pp); advise(`📐 ${pp.tract} withdrawn from Planning. Application fees are not refundable.`,'warn'); return; }
     const L=transitLines.find(x=>x.stops.some(([a,b])=>a===i&&b===j));
     if(L){ removeLine(L); advise(`🚏 ${L.name} discontinued.`,'warn'); return; }
-    if(cell.kind==='tline'){ removeTline(i,j); cell.kind=null; spend(10); return; }
     if(cell.kind||cell.b){ clearCell(i,j); spend(10); } return;
   }
   if(t==='subdivide') return;
   const toolDef=TOOLS.find(x=>x.id===t);
-  if(t==='transmission'){
-    // painted cell by cell, and it takes the land it crosses
-    if(cell.kind||cell.b) return;
-    if(!cellBuildable(i,j)) return;
-    if(S.money<toolDef.cost){ if(isClick) toast('💸 Not enough funds.',true); return; }
-    buildTline(i,j); spend(toolDef.cost);
-    if(!S._seenTline){ S._seenTline=true;
-      advise('🗼 <b>Transmission corridor.</b> Generation is worthless where it is generated. Run a corridor from your plants to a <b>🔌 Substation</b> near the load — a substation more than four cells from a plant needs one.'); }
-    return;
-  }
   if(t==='road'||t==='ave'){
     if(cell.kind) return;
     if(cellBuildable(i,j)){
@@ -2145,7 +2074,7 @@ function applyTool(i,j,isClick){
     if(t==='datacenter'){
       // the community-benefit payment in the development agreement, up front
       S.money+=DATACENTER.daFee; S.monthImpactFees+=DATACENTER.daFee;
-      advise(`🖥️ <b>Data center entering review.</b> The development agreement brings ${fmt$(DATACENTER.daFee)} up front, and once it is assessed it will be the largest single line on your property-tax roll. Line up <b>${DATACENTER.power} MW</b> of firm capacity and substation coverage before it opens, or it will black out the rest of your city.`,'warn');
+      advise(`🖥️ <b>Data center entering review.</b> The development agreement brings ${fmt$(DATACENTER.daFee)} up front, and once it is assessed it will be the largest single line on your property-tax roll. Line up <b>${DATACENTER.power} MW</b> of firm capacity before it opens, or it will black out the rest of your city.`,'warn');
     }
     const src=ENERGY[t]||WATERSRC[t]||(t==='datacenter'?DATACENTER:null);
     if(src&&!S['_seen_'+t]){ S['_seen_'+t]=true; advise(`${src.ico} <b>${src.name}.</b> ${src.note}`); }
@@ -2533,7 +2462,6 @@ function showTip(p,mx,my){
         const o=b.kind==='solar'?e.out*MAP.solarMul:b.kind==='wind'?e.out*MAP.windMul
           :b.kind==='hydro'?e.out*(0.35+S.reservoir*0.65)*(S.drought?0.55:1):e.out;
         html+=e.out?`Output: ${fmtN(o)} MW${e.clean?' · clean':' · fossil'}${b.kind==='solar'?' · nothing at the evening peak':''}<br>`
-          :e.role==='grid'?`Carries ${fmtN(e.cap)} MW · serves ${e.radius} cells<br>${b.energised?'<span style="color:#8fd97a">Energised</span>':'<span style="color:#ff8a7a">Not energised — no corridor back to a plant</span>'}<br>`
           :`Discharges ${fmtN(e.discharge)} MW into the evening peak<br>`; }
       if(b.kind==='datacenter') html+=`Draws ${fmtN(DATACENTER.power)} MW around the clock<br>Cooling water: ${fmtN(DATACENTER.water)} af<br>Jobs: ${DATACENTER.jobs}<br>`;
       if(b.kind==='commuter') html+='Regional job access: +220<br>';
@@ -2569,22 +2497,18 @@ function showTip(p,mx,my){
 }
 
 // ---------- development ----------
-function zonedEmptyCells(z,needPower){
+function zonedEmptyCells(z){
   const out=[];
   for(let i=0;i<G;i++) for(let j=0;j<G;j++){
     const c=grid[i][j];
-    if(c.kind==='zone'&&c.zone===z&&!c.b&&hasRoadAccess(i,j)){
-      // nothing gets built where the grid cannot reach it
-      if(needPower&&!powerServed(i,j)) continue;
-      out.push([i,j]);
-    }
+    if(c.kind==='zone'&&c.zone===z&&!c.b&&hasRoadAccess(i,j)) out.push([i,j]);
   }
   return out;
 }
 function tryDevelop(z,kind){
   let cells=[];
-  if(kind==='res') RES_ZONES.forEach(rz=>zonedEmptyCells(rz,true).forEach(c=>cells.push([c[0],c[1],rz])));
-  else cells=zonedEmptyCells(z,true).map(c=>[c[0],c[1],z]);
+  if(kind==='res') RES_ZONES.forEach(rz=>zonedEmptyCells(rz).forEach(c=>cells.push([c[0],c[1],rz])));
+  else cells=zonedEmptyCells(z).map(c=>[c[0],c[1],z]);
   if(!cells.length) return;
   const [i,j,cz]=cells[Math.floor(Math.random()*cells.length)];
   const val=kind==='res'?RES_TYPES[cz].val[1]:(kind==='com'?COM_VAL[1]:IND_VAL[1]);
@@ -2867,73 +2791,14 @@ function removeLine(L){
   computeTransit();
 }
 
-// ---------- power grid: delivery, not just generation ----------
-// Three separate things have to be true to keep the lights on: you must generate
-// enough at the evening peak, you must have substation capacity to carry it, and
-// the building must sit inside a substation's service area. Each has its own fix.
-const GRID_LINK=2;        // how far a plant or substation reaches to a corridor
-const PLANT_ADJ=4;        // a substation this close to a plant needs no corridor
-let powerCov=null;
-function rebuildPowerGrid(){
-  const plants=[],subs=[];
-  allBuildings.forEach(b=>{
-    if(b.state!=='done') return;
-    const e=ENERGY[b.kind]; if(!e) return;
-    (e.role==='grid'?subs:plants).push(b);
-  });
-  // label the connected components of the corridor network
-  const compOf=new Map(); let comps=0;
-  for(const k of powerNet){
-    if(compOf.has(k)) continue;
-    const id=comps++; const q=[k]; compOf.set(k,id);
-    while(q.length){
-      const [i,j]=q.pop().split(',').map(Number);
-      tlineNeighbors(i,j).forEach(([a,b2])=>{ const kk=a+','+b2;
-        if(!compOf.has(kk)){ compOf.set(kk,id); q.push(kk); } });
-    }
-  }
-  const nearComps=(i,j,r)=>{
-    const out=new Set();
-    for(let dx=-r;dx<=r;dx++) for(let dz=-r;dz<=r;dz++){
-      const id=compOf.get((i+dx)+','+(j+dz));
-      if(id!==undefined) out.add(id);
-    }
-    return out;
-  };
-  const liveComp=new Set();
-  plants.forEach(p=>nearComps(p.i,p.j,GRID_LINK).forEach(id=>liveComp.add(id)));
-  const live=[];
-  S.subsLive=0; S.subsDark=0;
-  subs.forEach(s=>{
-    let on=false;
-    for(const id of nearComps(s.i,s.j,GRID_LINK)) if(liveComp.has(id)){ on=true; break; }
-    // a substation right next to generation is its own little grid
-    if(!on) on=plants.some(p=>Math.max(Math.abs(p.i-s.i),Math.abs(p.j-s.j))<=PLANT_ADJ);
-    s.energised=on;
-    if(on){ live.push(s); S.subsLive++; } else S.subsDark++;
-  });
-  S.subCap=S.subsLive*ENERGY.substation.cap;
-  const r=ENERGY.substation.radius;
-  powerCov=new Set();
-  live.forEach(s=>{
-    for(let dx=-r;dx<=r;dx++) for(let dz=-r;dz<=r;dz++){
-      const i=s.i+dx,j=s.j+dz;
-      if(i<0||j<0||i>=G||j>=G) continue;
-      powerCov.add(i+','+j);
-    }
-  });
-}
-function powerServed(i,j){ return powerCov?powerCov.has(i+','+j):false; }
-
 // ---------- energy grid & water supply ----------
 const STORE_DRAW=0.30;      // share of the banked volume available on any one day
 function computeUtilities(){
-  rebuildPowerGrid();
   const n={}; ENERGY_KINDS.concat(WATER_KINDS).forEach(k=>n[k]=0);
   // Load split into an average day and the evening peak. Homes ramp hard at 7pm
   // when everyone gets in and the AC is still running; industry is a day shift;
   // a data center does not care what time it is.
-  let base=0,peak=0,dc=0,unserved=0,lit=0;
+  let base=0,peak=0,dc=0;
   allBuildings.forEach(b=>{ if(b.state!=='done') return;
     if(n[b.kind]!==undefined) n[b.kind]++;
     if(b.kind==='datacenter'){ dc++; base+=DATACENTER.power; peak+=DATACENTER.power; }
@@ -2942,12 +2807,9 @@ function computeUtilities(){
       if(b.kind==='res'){ base+=l*0.85; peak+=l*1.55; }
       else if(b.kind==='com'){ base+=l*1.10; peak+=l*1.15; }
       else { base+=l*1.25; peak+=l*0.95; }
-    } else return;
-    if(powerServed(b.i,b.j)) lit++; else unserved++;
+    }
   });
   S.plants=n; S.dataCenters=dc;
-  S.unserved=unserved;
-  S.unservedPct=(lit+unserved)>0?unserved/(lit+unserved):0;
   const dry=S.drought?1:0;
   // ---- generation ----
   const gen={
@@ -2972,12 +2834,10 @@ function computeUtilities(){
   const cleanPeak=gen.geo+gen.hydro*0.92+gen.wind*0.45+S.batteryOut;
   S.peakCap=Math.round(cleanPeak+gen.gas);
   S.powerCap=Math.round(dayCap);
-  // Delivery: generation is capped by the substation capacity actually energised
-  S.powerDeliver=Math.min(S.peakCap,S.subCap);
-  S.reserve=S.powerPeak>0?(S.powerDeliver-S.powerPeak)/S.powerPeak:1;
-  S.powerOK=S.powerPeak===0||S.powerDeliver>=S.powerPeak;
-  S.powerStress=clamp(1-S.powerDeliver/Math.max(S.powerPeak,1),0,1);
-  S.gridLimited=S.powerPeak>0&&S.subCap<S.peakCap&&S.subCap<S.powerPeak;
+  // What you can actually serve at the peak is what counts
+  S.reserve=S.powerPeak>0?(S.peakCap-S.powerPeak)/S.powerPeak:1;
+  S.powerOK=S.powerPeak===0||S.peakCap>=S.powerPeak;
+  S.powerStress=clamp(1-S.peakCap/Math.max(S.powerPeak,1),0,1);
   // SB 100 measures energy actually served, and gas only runs when clean cannot
   // cover the load — so batteries improve compliance by displacing the evening ramp
   const cleanDay=gen.solar+gen.wind+gen.hydro+gen.geo;
@@ -3044,39 +2904,15 @@ function stepWaterStorage(){
     S.waterFlow=-(S.waterDraw||0);
   }
 }
-// The grid fails in three distinct ways and each has a different fix, so name the
-// one that is actually binding rather than saying "not enough power".
+// Name the binding constraint rather than saying "not enough power": at the
+// evening peak solar is gone, so the fix is storage or firm generation.
 function powerWatch(){
   if(!S.started) return;
   const d=S.day;
-  // The commonest way to be stuck: platted lots with no substation reaching them,
-  // so nothing ever breaks ground and there is no unserved building to complain about.
-  if(S.subsLive===0){
-    let waiting=0;
-    ALL_ZONES.forEach(z=>waiting+=zonedEmptyCells(z).length);
-    if(waiting>0&&d-(S._noSubWarn||-9999)>90){
-      S._noSubWarn=d;
-      advise(`🔌 <b>Nothing can be built yet — there is no energised substation.</b> ${waiting} platted lot${waiting===1?'':'s'} ${waiting===1?'is':'are'} waiting on power. Build a <b>🔌 Substation</b> within reach of them, and put generation within four cells of it or run a <b>🗼 Transmission</b> corridor to it.`,'bad');
-      return;
-    }
-  }
   if(S.powerPeak<=0) return;
-  if(S.unserved>0&&d-(S._darkWarn||-9999)>150){
-    S._darkWarn=d;
-    advise(`🔌 <b>${S.unserved} building${S.unserved===1?' is':'s are'} outside every substation's service area.</b> Generation you cannot deliver is worth nothing — place a <b>🔌 Substation</b> near them, and run a <b>🗼 Transmission</b> corridor to it if it is more than four cells from a plant.`,'warn');
-    return;
-  }
-  if(S.subsDark>0&&d-(S._deadSubWarn||-9999)>200){
-    S._deadSubWarn=d;
-    advise(`🔌 <b>${S.subsDark} substation${S.subsDark===1?' is':'s are'} not energised.</b> Nothing feeds ${S.subsDark===1?'it':'them'} — run a transmission corridor back to a plant.`,'warn');
-    return;
-  }
   if(!S.powerOK&&d-(S._blackWarn||-9999)>120){
     S._blackWarn=d;
-    if(S.gridLimited)
-      advise(`⚡ <b>Rolling blackouts.</b> You generate ${fmtN(S.peakCap)} MW but your substations can only carry <b>${fmtN(S.subCap)} MW</b>, against a ${fmtN(S.powerPeak)} MW evening peak. The bottleneck is delivery — build more substations.`,'bad');
-    else
-      advise(`⚡ <b>Rolling blackouts.</b> The evening peak is ${fmtN(S.powerPeak)} MW and you can only serve ${fmtN(S.powerDeliver)} MW. Solar produces nothing at 7pm — add <b>🔋 batteries</b> to shift the midday surplus, or firm generation that runs after dark.`,'bad');
+    advise(`⚡ <b>Rolling blackouts.</b> The evening peak is ${fmtN(S.powerPeak)} MW and you can only serve ${fmtN(S.peakCap)} MW. Solar produces nothing at 7pm — add <b>🔋 batteries</b> to shift the midday surplus, or firm generation that runs after dark.`,'bad');
     return;
   }
   if(S.powerOK&&S.reserve<0.10&&d-(S._flexWarn||-9999)>180){
@@ -3171,19 +3007,7 @@ function drawDataOverlay(){
       overlayCtx.fillStyle=`rgba(${Math.round(60+t*195)},${Math.round(200-t*170)},50,0.85)`;
       overlayCtx.fillRect(i,j,1,1);
     }
-  } else if(ovlMode==='power'){
-    // green where a substation reaches, red on anything built beyond it
-    for(let i=0;i<G;i++) for(let j=0;j<G;j++){
-      const c=grid[i][j];
-      const built=c.b&&['res','com','ind','datacenter'].includes(c.b.kind);
-      const zoned=c.kind==='zone';
-      if(!built&&!zoned&&c.kind!=='tline') continue;
-      if(c.kind==='tline'){ overlayCtx.fillStyle='rgba(240,200,80,0.9)'; }
-      else if(powerServed(i,j)) overlayCtx.fillStyle='rgba(70,200,110,0.55)';
-      else overlayCtx.fillStyle=built?'rgba(235,70,60,0.9)':'rgba(150,60,55,0.5)';
-      overlayCtx.fillRect(i,j,1,1);
     }
-  }
   overlayTex.needsUpdate=true;
 }
 
@@ -3290,7 +3114,6 @@ function monthlyTick(){
   let a=58;
   a+=S.waterOK?4:-(7+22*clamp(S.waterStress*3,0,1));
   a+=S.powerOK?3:-(6+20*clamp(S.powerStress*3,0,1));
-  a-=clamp(S.unservedPct||0,0,1)*10;              // neighbourhoods the grid never reached
   a-=(S.dataCenters||0)*0.8;                      // lots of load, very few jobs
   a-=S.crime*32; a-=S.avgCong*16;
   a+=clamp(S.modeShare||0,0,0.6)*16;      // people like having a way to get around
@@ -3308,10 +3131,7 @@ function monthlyTick(){
     if(!S.waterOK) gripes.push(S.waterStress>0.15
       ?`water — supply is ${Math.round(S.waterStress*100)}% short of demand`
       :'water pressure at the summer peak');
-    if(!S.powerOK) gripes.push(S.gridLimited
-      ?'blackouts — you generate more than your substations can deliver'
-      :'blackouts in the evening peak');
-    if(S.unservedPct>0.06) gripes.push(`whole blocks that never got connected to the grid`);
+    if(!S.powerOK) gripes.push('blackouts in the evening peak');
     if(S.dataCenters>0&&S.pop<S.dataCenters*450) gripes.push('the data centers — all that power and water, and barely any jobs');
     if(S.crime>0.22) gripes.push('crime — you need police coverage across the whole city');
     if(S.avgCong>0.55) gripes.push('traffic — upgrade the busy corridors to avenues');
@@ -3648,12 +3468,6 @@ function renderPanel(){
       <div class="uRow"><span>Available at the peak</span><b class="${S.powerOK?'':'neg'}">${fmtN(S.peakCap)} MW</b></div>
       ${S.batteryOut>0?`<div class="uRow"><span>&nbsp;&nbsp;↳ from batteries</span><b class="pos">+${fmtN(S.batteryOut)} MW</b></div>`:''}
       <div class="uRow"><span>Reserve margin</span><b style="color:${S.reserve>=0.15?'#8fd97a':S.reserve>=0?'#e0cf7a':'#ff8a7a'}">${S.powerPeak>0?Math.round(S.reserve*100)+'%':'—'}</b></div>
-      <div class="mapSect">Delivery</div>
-      <div class="uRow"><span>Substations energised</span><b class="${S.subsDark?'neg':''}">${S.subsLive||0}${S.subsDark?` · ${S.subsDark} dark`:''}</b></div>
-      <div class="uRow"><span>Substation capacity</span><b class="${S.gridLimited?'neg':''}">${fmtN(S.subCap||0)} MW</b></div>
-      ${S.unserved>0?`<div class="uRow"><span>Buildings off the grid</span><b class="neg">${S.unserved}</b></div>`:''}
-      ${S.gridLimited?`<div class="lawNote" style="border-left-color:#ff8a7a"><b>Delivery is your bottleneck.</b> You generate ${fmtN(S.peakCap)} MW at the peak but can only carry ${fmtN(S.subCap)} MW to the load. More generation will not help — build substations.</div>`:''}
-      ${S.unserved>0?`<div class="lawNote" style="border-left-color:#ff8a7a"><b>${S.unserved} building${S.unserved===1?'':'s'} outside every service area.</b> Turn on the <b>⚡ Grid</b> overlay to see where. Red is built and unserved, green is covered, gold is corridor.</div>`:''}
       <div class="lawNote"><b>The duck curve:</b> California's load peaks around 7pm, after the sun has set. Solar nameplate does nothing for that hour — batteries charge on the midday surplus and discharge into the ramp, which is why they count toward SB 100 here.</div>
       ${S.dataCenters>0?`<div class="uRow"><span>Data centers</span><b>${S.dataCenters} · ${fmtN(S.dataCenters*DATACENTER.power)} MW flat</b></div>
       <div class="lawNote"><b>Data centers do not sleep.</b> They draw the same load at 3am as at 3pm, so they raise your peak one-for-one and every megawatt of it has to be firm.</div>`:''}
@@ -3808,7 +3622,6 @@ function loadGame(data){
   (data.deadTrees||[]).forEach(removeTree);
   // roads first
   (data.cells||[]).filter(e=>e.k==='road').forEach(e=>buildRoad(e.i,e.j,e.rt||'road'));
-  (data.cells||[]).filter(e=>e.k==='tline').forEach(e=>buildTline(e.i,e.j));
   // zones
   (data.cells||[]).forEach(e=>{ if(e.k==='zone'||(e.b&&e.k!=='road')) if(e.z) setZone(e.i,e.j,upZ(e.z)); });
   // buildings
@@ -3899,8 +3712,8 @@ function startGame(mapId,silent){
     budget:{},bonds:[],tut:false,tutPending:false,approval:60,crime:0,disasterHeat:0,avgCong:0,termCount:0,
     subZone:'R1',monthImpactFees:0,impactFeesTotal:0,tractsRecorded:0,
     plants:{},gen:{},water:{},cleanPct:1,gwCap:0,gwRequested:0,gwOverdraft:false,
-    powerPeak:0,peakCap:0,powerDeliver:0,reserve:1,powerStress:0,gridLimited:false,batteryOut:0,
-    subCap:0,subsLive:0,subsDark:0,unserved:0,unservedPct:0,dataCenters:0,dcWater:0,
+    powerPeak:0,peakCap:0,reserve:1,powerStress:0,batteryOut:0,
+    dataCenters:0,dcWater:0,
     transitRiders:0,transitOpex:0,transitFares:0,fareboxRatio:0,modeShare:0,transitStops:0,transitMiles:0,transitGrants:0});
   S._todNote=false;
   { const tb=document.getElementById('transitBar'); if(tb) tb.style.display='none'; }
@@ -3924,7 +3737,7 @@ function startGame(mapId,silent){
     advise(intro);
     advise(`🔌 <b>Utilities here:</b> ${['solar ×'+MAP.solarMul.toFixed(2)+' sun','wind ×'+MAP.windMul.toFixed(2),MAP.hydro?'a river you can dam':null,MAP.geo?'geothermal below you':null,MAP.desal?'the Pacific for desalination':null,MAP.aqueduct?'a State Water Project turnout':null].filter(Boolean).join(' · ')}. Groundwater is capped at ${fmtN(MAP.gwCap)} af by SGMA in the ${MAP.basin}.`);
     advise('🧭 <b>How land gets built in California:</b> 1) run a <b>road</b> out to raw land · 2) hit <b>📐 Subdivide</b> and drag a rectangle touching that road · 3) submit the <b>Tentative Map</b> and wait out review · 4) when the Final Map records, streets and lots appear and buildings go up. Pick your zoning — <b>R-1</b> houses, <b>R-2</b> townhomes, <b>R-3</b> apartments or <b>Mixed-Use</b> — and add <b>water</b> and <b>power</b> first, or nothing will build.');
-    advise('⚡ <b>Power takes three things, not one:</b> generation, a <b>🔌 Substation</b> to carry it, and the lot has to sit inside that substation\'s service area. A substation within four cells of a plant runs on its own; farther out, paint a <b>🗼 Transmission</b> corridor to it. Turn on the <b>⚡ Grid</b> overlay to see exactly what is covered.');
+    advise('⚡ <b>Power is about the evening, not the average.</b> California peaks around 7pm, after the sun has set — solar nameplate does nothing for that hour. Build <b>🔋 batteries</b> to carry midday solar into the ramp, or firm generation that runs after dark. Watch the reserve margin in the <b>⚡ Grid</b> panel.');
   }
 }
 
