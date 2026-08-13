@@ -298,8 +298,27 @@ const fmtN=n=>Math.round(n).toLocaleString('en-US');
 // a third of the land you could see was land you could ever build on — the outer
 // band looked identical to the rest and simply refused every tool. The grid now
 // covers 560 of the 620, leaving a thin scenic margin instead of a dead zone.
-const G=140, CELL=4, WORLD=620, HALF=G*CELL/2;
+const G=200, CELL=4, WORLD=880, HALF=G*CELL/2;
 const CAM_LIMIT=Math.min(HALF+60,WORLD/2-15);
+// Everything inside this radius is ground that existing cities may already sit
+// on, so no new landform is allowed to touch it. Lakes and inlets live only in
+// the band the map grew into, and fade in across RING_FADE so there is no seam.
+const RING_IN=280, RING_FADE=44;
+function ringFeatures(x,z,map){
+  const lakes=map.lakes;
+  if(!lakes||!lakes.length) return 0;
+  const rr=Math.max(Math.abs(x),Math.abs(z));
+  if(rr<=RING_IN) return 0;
+  const gate=smooth(RING_IN,RING_IN+RING_FADE,rr);
+  let d=0;
+  for(const L of lakes){
+    const dist=Math.hypot(x-L.x,z-L.z);
+    if(dist>=L.r) continue;
+    const t=1-dist/L.r;
+    d-=L.depth*t*t*(3-2*t);          // smooth bowl, flat-bottomed
+  }
+  return d*gate;
+}
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 // ---------- California regions ----------
@@ -316,6 +335,9 @@ const MAPS={
     pal:{gold:0xb0904c,green:0x5f8c38,dark:0x4e6e34,rock:0x8b8377,chap:0x71713f,sand:0xcbb98a}, fields:false,
     windMul:0.55, geo:true, hydro:true, intake:true, desal:false, aqueduct:false,
     basin:'Cosumnes Subbasin', gwCap:1400,
+    // reservoirs behind the foothill dams, out past the old edge of the map
+    lakes:[{x:-344,z:150,r:70,depth:10},{x:322,z:-338,r:60,depth:9},
+           {x:96,z:372,r:52,depth:8}],
     riverX:z=>52*Math.sin(z*0.006+1.2)+26*Math.sin(z*0.017+4.0)+30,
     terrain(x,z){
       // Broad, gently rolling ground across the whole planning area. The real
@@ -325,14 +347,19 @@ const MAPS={
       h=Math.pow(h,1.35)*34-5;
       h+=(fbm(x*0.021+21,z*0.021+9)-0.5)*2.4;
       const d=Math.sqrt(x*x*0.72+z*z)/305;
-      const mask=smooth(0.88,1.24,d);
+      // Inside the protected radius keep the original relief exactly — the
+      // corners of the old map genuinely had hills, and cities are sitting on
+      // them. Only past that ease toward a flatter profile so the band the map
+      // grew into stays workable.
+      const near=smooth(0.88,1.24,d), far=smooth(1.16,1.52,d);
+      const mask=lerp(near,far,smooth(RING_IN,RING_IN+RING_FADE,Math.max(Math.abs(x),Math.abs(z))));
       const floor=3.6+(fbm(x*0.012+2,z*0.012+5)-0.5)*3.0
                      +(fbm(x*0.034+11,z*0.034+4)-0.5)*1.1;
       h=lerp(floor,h,Math.min(1,mask));
       // the river valley is the one piece of real topography in town — keep it
       const dr=Math.abs(x-this.riverX(z));
       h-=8.5*Math.exp(-(dr*dr)/(2*17*17));
-      return h;
+      return h+ringFeatures(x,z,this);
     },
     nearWater(x,z){ return Math.abs(x-this.riverX(z))<26; },
   },
@@ -348,14 +375,17 @@ const MAPS={
     pal:{gold:0xbaa058,green:0x4f8a34,dark:0x3f7a2c,rock:0x9a8f78,chap:0x8a8a52,sand:0xc9b98c}, fields:true,
     windMul:0.9, geo:false, hydro:true, intake:true, desal:false, aqueduct:true,
     basin:'Eastern San Joaquin Subbasin', gwCap:1900,
+    // flooded basins and duck club sloughs on the valley floor
+    lakes:[{x:-352,z:-96,r:76,depth:8},{x:338,z:238,r:64,depth:7},
+           {x:-120,z:360,r:58,depth:6},{x:356,z:-300,r:50,depth:6}],
     riverX:z=>-60+7*Math.sin(z*0.01)+3*Math.sin(z*0.04),
     terrain(x,z){
       let h=2.1+(fbm(x*0.01+3,z*0.01+6)-0.5)*1.5+(fbm(x*0.045+9,z*0.045+2)-0.5)*0.5;
       const r=Math.max(Math.abs(x),Math.abs(z));
-      h+=smooth(300,368,r)*(5+fbm(x*0.01,z*0.01)*6);   // rim sits outside the grid
+      h+=smooth(420,486,r)*(5+fbm(x*0.01,z*0.01)*6);   // rim sits outside the grid
       const dr=Math.abs(x-this.riverX(z));
       h-=6.5*Math.exp(-(dr*dr)/(2*10*10));             // the canal cut, widened a touch
-      return h;
+      return h+ringFeatures(x,z,this);
     },
     nearWater(x,z){ return Math.abs(x-this.riverX(z))<20; },
   },
@@ -371,6 +401,9 @@ const MAPS={
     pal:{gold:0xa8a06a,green:0x4e7d3c,dark:0x3e6a34,rock:0x7d7a72,chap:0x6a7a48,sand:0xd8c9a0}, fields:false,
     windMul:1.35, geo:false, hydro:false, intake:false, desal:true, aqueduct:false,
     basin:'Santa Maria Groundwater Basin', gwCap:900,
+    // a coastal lagoon behind the dunes, and reservoirs up in the back country
+    lakes:[{x:-300,z:-352,r:72,depth:11},{x:330,z:180,r:62,depth:11},
+           {x:150,z:-368,r:54,depth:10},{x:296,z:344,r:58,depth:11}],
     shoreX(z){ return -128+24*Math.sin(z*0.008)+11*Math.sin(z*0.021+2); },
     riverX(){ return 1e9; },
     terrain(x,z){
@@ -381,7 +414,7 @@ const MAPS={
       // pushed inland past the edge of the grid
       h+=smooth(40,210,sx)*(fbm(x*0.012+4,z*0.012+7)-0.5)*4.2;
       h+=smooth(300,440,sx)*Math.pow(fbm(x*0.006+9,z*0.006+2),1.3)*26;
-      return h;
+      return h+ringFeatures(x,z,this);
     },
     nearWater(x,z){ return x-this.shoreX(z)<34; },
   },
@@ -393,19 +426,26 @@ const MAPS={
     green:[0.22,0.3,0.32,0.2,0.1,0.05,0.03,0.03,0.03,0.05,0.1,0.16],
     hasRiver:false, hasOcean:false, treeDensity:0.14, treeStyle:'joshua',
     wellOut:180, solarMul:1.6, fireMul:0.35, quakeMul:1.4, droughtP:0.5, floodP:0,
-    snowline:0, waterY:-99, ceqaWaterLabel:'desert wash habitat',
+    // Water level sits at 0; every cell of the original map is clamped to 1.0 or
+    // above, so nothing that existed before becomes wet or unbuildable.
+    snowline:0, waterY:0, ceqaWaterLabel:'desert wash habitat',
     pal:{gold:0xc5a06b,green:0x8a9464,dark:0x7a8456,rock:0x9c7a58,chap:0x9a8560,sand:0xd8bc8a}, fields:false,
     windMul:1.45, geo:false, hydro:false, intake:false, desal:false, aqueduct:true,
     basin:'Mojave Basin Area', gwCap:520,
+    // aqueduct reservoirs and a flooded playa out past the old map edge
+    lakes:[{x:-330,z:306,r:66,depth:9},{x:344,z:-160,r:58,depth:8},
+           {x:-160,z:-356,r:70,depth:9}],
     washX(z){ return 40*Math.sin(z*0.005)+10*Math.sin(z*0.02); },
     riverX(){ return 1e9; },
     terrain(x,z){
       let h=4.5+(fbm(x*0.008+5,z*0.008+1)-0.5)*4.4+(fbm(x*0.03+2,z*0.03+9)-0.5)*1.2;
       const r=Math.max(Math.abs(x),Math.abs(z));
-      h+=smooth(298,368,r)*(12+fbm(x*0.008+8,z*0.008+3)*16);   // ranges past the grid
+      h+=smooth(420,486,r)*(12+fbm(x*0.008+8,z*0.008+3)*16);   // ranges past the grid
       const dr=Math.abs(x-this.washX(z));
       h-=3.0*Math.exp(-(dr*dr)/(2*12*12));                     // the wash, a bit more defined
-      return Math.max(h,1.0);
+      // clamp first so the desert floor keeps its old height exactly, then let
+      // the ring lakes cut below it
+      return Math.max(h,1.0)+ringFeatures(x,z,this);
     },
     nearWater(x,z){ return Math.abs(x-this.washX(z))<10; },
   },
@@ -453,7 +493,8 @@ renderer.shadowMap.enabled=true;
 renderer.shadowMap.type=THREE.PCFSoftShadowMap;
 
 const scene=new THREE.Scene();
-scene.fog=new THREE.Fog(0x9fd4f0,380,1000);
+// Fog and zoom scale with the world; both were tuned when the map was 620 wide
+scene.fog=new THREE.Fog(0x9fd4f0,540,1560);
 const camera=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,1,2400);
 
 const hemi=new THREE.HemisphereLight(0xbfd9ec,0x8a7a55,0.55); scene.add(hemi);
@@ -678,7 +719,7 @@ function updateSky(dt,speed){
   if(MAP.hasOcean&&tod>6&&tod<11) _c.lerp(new THREE.Color(0xb8c2c8),0.35);
   renderer.setClearColor(_c);
   scene.fog.color.copy(_c);
-  scene.fog.near=MAP.hasOcean&&tod>6&&tod<11?220:380;
+  scene.fog.near=MAP.hasOcean&&tod>6&&tod<11?320:540;
   const night=clamp(1-sh*4,0,1);
   emissiveMats.forEach(m=>m.emissiveIntensity=0.12+night*0.85);
   if(waterMat) waterMat.color.setHex(MAP.hasOcean?0x27607e:0x2e7396).lerp(new THREE.Color(0x0e2438),night*0.8);
@@ -718,7 +759,7 @@ function camTick(dt){
     shakeAmt*=Math.pow(0.05,dt);
   }
 }
-addEventListener('wheel',e=>{ camDist=clamp(camDist*(1+Math.sign(e.deltaY)*0.09),36,560); applyCam(); },{passive:true});
+addEventListener('wheel',e=>{ camDist=clamp(camDist*(1+Math.sign(e.deltaY)*0.09),36,960); applyCam(); },{passive:true});
 addEventListener('resize',()=>{ camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
 
 // ---------- picking ----------
@@ -1353,7 +1394,15 @@ function textSprite(text,bg,fg){
 
 // ---------- grid ----------
 let grid=[];
+// Every development pass asks for vacant lots once per designation — ten full
+// grid scans a tick, which on a 200x200 map is most of the frame. Build the
+// index once and keep it until something actually changes what is on the ground.
+// Declared up here because initGrid() runs during startup, long before the
+// transit section where zonedEmptyCells lives.
+var _zoneIdx=null;
+function invalidateZoneIndex(){ _zoneIdx=null; }
 function initGrid(){
+  invalidateZoneIndex();
   grid=[];
   for(let i=0;i<G;i++){ grid[i]=[]; for(let j=0;j<G;j++) grid[i][j]={kind:null,zone:null,b:null,overlay:null,roadMesh:null,roadType:null,deckY:null,pylons:null}; }
 }
@@ -1402,6 +1451,7 @@ function refreshRoadMesh(i,j){
   c.roadMesh.rotation.y=horizontal?Math.PI/2:0;
 }
 function buildRoad(i,j,type){
+  invalidateZoneIndex();
   const cc=cellCenter(i,j);
   const isBridge=type==='bridge';
   const y=isBridge?Math.max(MAP.waterY+1.5,cellTopY(i,j)+0.4):cellTopY(i,j);
@@ -1467,6 +1517,7 @@ function addPad(i,j){
   return {pad:p,topY:y+0.3};
 }
 function startBuilding(i,j,kind,level,opts={}){
+  invalidateZoneIndex();
   const cell=grid[i][j];
   const {pad,topY}=addPad(i,j);
   const cc=cellCenter(i,j);
@@ -1511,6 +1562,7 @@ function finishBuilding(b){
   if(b.sign){ cityG.remove(b.sign); b.sign=null; }
 }
 function demolishBuilding(b,toRuin){
+  invalidateZoneIndex();
   const cell=grid[b.i][b.j];
   cityG.remove(b.group); if(b.scaffold) cityG.remove(b.scaffold); if(b.sign) cityG.remove(b.sign);
   if(toRuin){
@@ -2200,6 +2252,7 @@ setTool('select');
 
 // ---------- zoning / tools ----------
 function setZone(i,j,z){
+  invalidateZoneIndex();
   if(z==='I') z='IL';                       // saves from before industry was split
   if(z==='R'||!zoneColors[z]) z='R1';
   const cell=grid[i][j];
@@ -2210,6 +2263,7 @@ function setZone(i,j,z){
   cityG.add(m); cell.overlay=m;
 }
 function clearCell(i,j){
+  invalidateZoneIndex();
   const cell=grid[i][j];
   if(cell.b) demolishBuilding(cell.b,false);
   if(cell.overlay){ cityG.remove(cell.overlay); cell.overlay=null; }
@@ -2810,12 +2864,16 @@ function showTip(p,mx,my){
 
 // ---------- development ----------
 function zonedEmptyCells(z){
-  const out=[];
-  for(let i=0;i<G;i++) for(let j=0;j<G;j++){
-    const c=grid[i][j];
-    if(c.kind==='zone'&&c.zone===z&&!c.b&&hasRoadAccess(i,j)) out.push([i,j]);
+  if(!_zoneIdx){
+    _zoneIdx={};
+    for(let i=0;i<G;i++) for(let j=0;j<G;j++){
+      const c=grid[i][j];
+      if(c.kind!=='zone'||c.b||!c.zone) continue;
+      if(!hasRoadAccess(i,j)) continue;
+      (_zoneIdx[c.zone]||(_zoneIdx[c.zone]=[])).push([i,j]);
+    }
   }
-  return out;
+  return _zoneIdx[z]||[];        // callers only read this
 }
 function tryDevelop(z,kind){
   let cells=[];
@@ -4108,7 +4166,7 @@ function serialize(){
     st:p.state,dl:p.daysLeft,td:p.totalDays,mt:p.mapType,cq:p.ceqa,fe:p.fees,tr:p.tract,ap:p.appealed}));
   const lines=transitLines.map(L=>({m:L.mode,s:L.stops,n:L.name,c:L.color,
     st:L.state||'done',dl:L.daysLeft||0,td:L.totalDays||0}));
-  return {v:7,map:S.mapId,parcels:par,lines,
+  return {v:8,map:S.mapId,parcels:par,lines,
     S:{money,day,dom,month,year,startYear,pop,incorporated,cityName,drought,reservoir,approval,crime,tut,tutPending,termCount,disasterHeat,heatwave,floodTimer,
        impactFeesTotal:S.impactFeesTotal,tractsRecorded:S.tractsRecorded,lockDay:S.lockDay,
        transitGrants:S.transitGrants,waterStore:S.waterStore},
@@ -4133,14 +4191,15 @@ loadInput.onchange=()=>{
   rd.readAsText(f);
   loadInput.value='';
 };
-const OLD_G=90;                  // grid size before the buildable area was widened
+// Cell indices are measured from the centre of the grid, so every widening moved
+// them relative to the terrain. Recording the grid each save format was written
+// at lets any of them be shifted back onto exactly the ground they were built on.
+const GRID_AT_VERSION={2:90,3:90,4:90,5:90,6:90,7:140};
 function loadGame(data){
-  if(!data||!(data.v>=2&&data.v<=7)||!MAPS[data.map]) { toast('⚠️ Not a valid Golden State Builder save.',true); return; }
-  // Cell indices are measured from the centre of the grid, so widening it moved
-  // every index relative to the terrain. Shift saves from the old grid by half
-  // the difference and they land back on exactly the ground they were built on.
-  if(data.v<7){
-    const off=(G-OLD_G)/2;
+  if(!data||!(data.v>=2&&data.v<=8)||!MAPS[data.map]) { toast('⚠️ Not a valid Golden State Builder save.',true); return; }
+  const oldG=GRID_AT_VERSION[data.v];
+  if(oldG&&oldG!==G){
+    const off=(G-oldG)/2;
     (data.cells||[]).forEach(e=>{ e.i+=off; e.j+=off; });
     (data.parcels||[]).forEach(p=>{ p.i0+=off; p.j0+=off; p.i1+=off; p.j1+=off; });
     (data.lines||[]).forEach(L=>{ L.s=(L.s||[]).map(([i,j])=>[i+off,j+off]); });
