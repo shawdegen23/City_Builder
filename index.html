@@ -2118,8 +2118,8 @@ const TOOLS=[
   {id:'cityhall',ico:'🏛️',name:'City Hall',cost:150000,cat:'civic',locked:()=>!S.incorporated},
 ];
 const CATS=[['land','🛣 Land'],['water','💧 Water'],['power','⚡ Power'],['transit','🚌 Transit'],['civic','🏛 Civic']];
-const CIVIC_IDS=['fire','police','school','park','cityhall','commuter','hsr','datacenter'];
-const LINE_TOOLS=['bus','rail'];
+const CIVIC_IDS=['fire','police','school','park','cityhall','datacenter'];
+const LINE_TOOLS=['bus','rail','commuter','hsr'];
 const UTIL_IDS=ENERGY_KINDS.concat(WATER_KINDS);       // placeable infrastructure
 const PLACE_IDS=CIVIC_IDS.concat(UTIL_IDS);
 const BRIDGE_COST={road:1200,ave:1800};
@@ -2556,24 +2556,50 @@ function finishDraft(){
   const info=lineCost(d.mode,d.stops);
   if(!info.path){ toast('🚏 Those stops are not connected by street.',true); return; }
   if(S.money<info.cap){ toast('💸 Not enough funds for that line.',true); return; }
+  const T=TRANSIT[d.mode];
+  if(T.minPop&&S.pop<T.minPop){ toast(`🚄 The Authority will not site a station under ${fmtN(T.minPop)} residents.`,true); return; }
   spend(info.cap);
+  const days=T.buildBase?Math.round(T.buildBase+info.cells*T.buildPerCell):0;
   const L={id:++lineSeq,mode:d.mode,stops:d.stops.slice(),path:info.path,
     color:LINE_COLORS[(lineSeq-1)%LINE_COLORS.length],
-    name:(d.mode==='rail'?'Line ':'Route ')+lineSeq,riders:0,vehicles:[],group:null};
+    name:LINE_NAME(d.mode)+lineSeq,riders:0,vehicles:[],group:null,
+    state:days>0?'build':'done', daysLeft:days, totalDays:days};
   transitLines.push(L);
   renderLine(L);
   cancelDraft();
   computeTransit();
-  if(d.mode==='rail'){
+  if(T.grant){
     const grant=Math.round(info.cap*TIRCP_SHARE);
     S.money+=grant; S.transitGrants=(S.transitGrants||0)+grant;
-    advise(`🚊 <b>${L.name} opens.</b> ${L.stops.length} stations, ${fmt$(info.opex)}/mo to operate. The state's <b>TIRCP</b> program awarded ${fmt$(grant)} toward construction.`);
     if(!S._todNote){ S._todNote=true;
       advise('🏗 <b>Transit changes the rules around it.</b> Within walking distance of a major transit stop, <b>AB 2097</b> forbids parking minimums so more homes fit on a lot, and <b>SB 743</b> lets projects be reviewed on vehicle miles travelled instead of traffic delay — which means faster CEQA. Land value rises too. Upzone around your stations.'); }
+    if(days>0)
+      advise(`${T.ico} <b>${L.name} breaks ground.</b> ${L.stops.length} stations over ${info.cells} segments, about <b>${Math.round(days/30)} months</b> to build. TIRCP awarded ${fmt$(grant)} toward construction.${d.mode==='hsr'?' The Authority is confident about that schedule. It usually is.':''}`,d.mode==='hsr'?'warn':'');
+    else
+      advise(`${T.ico} <b>${L.name} opens.</b> ${L.stops.length} stations, ${fmt$(info.opex)}/mo to operate. TIRCP awarded ${fmt$(grant)} toward construction.`);
   } else {
     advise(`🚌 <b>${L.name} begins service.</b> ${L.stops.length} stops for ${fmt$(info.opex)}/mo. Buses take cars off the streets they run on.`);
   }
   setTool('select');
+}
+function LINE_NAME(mode){
+  return mode==='hsr'?'HSR Corridor ':mode==='commuter'?'Commuter Line ':mode==='rail'?'Line ':'Route ';
+}
+// Lines under construction tick down here; nothing runs or carries until they open.
+function transitBuildTick(){
+  transitLines.forEach(L=>{
+    if(L.state!=='build') return;
+    if(--L.daysLeft>0) return;
+    L.state='done'; L.daysLeft=0;
+    renderLine(L); computeTransit();
+    const T=TRANSIT[L.mode];
+    if(L.mode==='hsr'){
+      S.approval=Math.min(97,S.approval+12);
+      advise(`🚄 <b>${L.name} is open.</b> Years late and well over budget — and now your city is on the statewide network. Regional job access, land value and ridership all jump.`);
+    } else if(L.mode==='commuter'){
+      advise(`🚉 <b>${L.name} opens.</b> Your residents can reach jobs across the region now, which makes housing here far more attractive. ${fmt$(T.stopOpex*L.stops.length)}/mo to run.`);
+    } else advise(`${T.ico} <b>${L.name} opens.</b> ${L.stops.length} stations now in service.`);
+  });
 }
 
 // ---------- pointer input ----------
@@ -2888,8 +2914,16 @@ const TRANSIT={
        stopOpex:190,cellOpex:38,radius:4,weight:0.34,speed:0.55,fare:4.0,
        note:'Runs on the streets you already built. Cheap to lay down, and you pay for it every month forever.'},
   rail:{name:'Light Rail',ico:'🚊',stopCost:420000,cellCost:78000,base:600000,
-        stopOpex:540,cellOpex:92,radius:7,weight:0.56,speed:0.85,fare:5.0,
+        stopOpex:540,cellOpex:92,radius:7,weight:0.56,speed:0.85,fare:5.0,rail:true,grant:true,
         note:'Its own right-of-way, high capacity, and a land-value halo that pulls density toward every station. Eligible for state TIRCP capital grants.'},
+  commuter:{name:'Commuter Rail',ico:'🚉',stopCost:2400000,cellCost:210000,base:1400000,
+        stopOpex:2900,cellOpex:240,radius:7,weight:0.58,speed:1.25,fare:8.0,rail:true,grant:true,
+        regional:220, buildBase:240, buildPerCell:5, minPop:0,
+        note:'Heavy rail out to the rest of the megaregion. Every station puts its neighbourhood inside commuting distance of jobs your city does not have to build, and takes a couple of years to construct.'},
+  hsr:{name:'High-Speed Rail',ico:'🚄',stopCost:15000000,cellCost:820000,base:8000000,
+        stopOpex:9400,cellOpex:820,radius:9,weight:0.62,speed:2.4,fare:28.0,rail:true,grant:true,
+        regional:900, buildBase:900, buildPerCell:14, minPop:1200,
+        note:'The statewide network. Enormously expensive, reliably late, and it puts the whole state within reach of your platform. The Authority will not site a station in a town under 1,200 residents.'},
 };
 const TIRCP_SHARE=0.35;          // state capital grant share for rail projects
 var transitLines=[];
@@ -2897,12 +2931,16 @@ var lineSeq=0, draftLine=null, coverageMap=null;
 
 function transitCoverage(i,j){ return coverageMap?(coverageMap.get(i+','+j)||0):0; }
 function majorTransit(i,j){ return transitCoverage(i,j)>=0.30; }   // "major transit stop"
+function lineOpen(L){ return L.state!=='build'; }
 function allTransitStops(){
   const out=[];
-  transitLines.forEach(L=>L.stops.forEach(([i,j])=>out.push({i,j,mode:L.mode})));
+  transitLines.forEach(L=>{ if(!lineOpen(L)) return;
+    L.stops.forEach(([i,j])=>out.push({i,j,mode:L.mode})); });
+  // saves from before commuter and HSR became drafted lines still carry them
+  // as placed stations; keep honouring those
   allBuildings.forEach(b=>{
     if(b.state!=='done') return;
-    if(b.kind==='commuter') out.push({i:b.i,j:b.j,mode:'rail'});
+    if(b.kind==='commuter') out.push({i:b.i,j:b.j,mode:'commuter'});
     if(b.kind==='hsr') out.push({i:b.i,j:b.j,mode:'hsr'});
   });
   return out;
@@ -2910,8 +2948,8 @@ function allTransitStops(){
 function rebuildCoverage(){
   coverageMap=new Map();
   allTransitStops().forEach(s=>{
-    const r=s.mode==='hsr'?9:s.mode==='rail'?TRANSIT.rail.radius:TRANSIT.bus.radius;
-    const w=s.mode==='hsr'?0.62:s.mode==='rail'?TRANSIT.rail.weight:TRANSIT.bus.weight;
+    const T=TRANSIT[s.mode]||TRANSIT.bus;
+    const r=T.radius, w=T.weight;
     for(let dx=-r;dx<=r;dx++) for(let dz=-r;dz<=r;dz++){
       const i=s.i+dx,j=s.j+dz;
       if(i<0||j<0||i>=G||j>=G) continue;
@@ -2925,7 +2963,12 @@ function rebuildCoverage(){
 // regional job access — commuting out to the rest of the megaregion
 function regionalJobs(){
   let n=0;
-  allBuildings.forEach(b=>{ if(b.state!=='done') return;
+  transitLines.forEach(L=>{
+    const T=TRANSIT[L.mode];
+    if(!T||!T.regional||!lineOpen(L)) return;
+    n+=T.regional*L.stops.length;
+  });
+  allBuildings.forEach(b=>{ if(b.state!=='done') return;   // legacy placed stations
     if(b.kind==='commuter') n+=220;
     if(b.kind==='hsr') n+=900; });
   return n;
@@ -2943,13 +2986,15 @@ function computeTransit(){
     if(b.kind==='hsr') riders+=520;
   });
   S.transitRiders=Math.round(riders);
-  let opex=0,fares=0,cells=0,stops=0;
+  let opex=0,fares=0,cells=0,stops=0,building=0;
   transitLines.forEach(L=>{
+    if(!lineOpen(L)){ building++; return; }    // no service, no fares, no operating cost yet
     const T=TRANSIT[L.mode];
     opex+=L.stops.length*T.stopOpex+L.path.length*T.cellOpex;
     cells+=L.path.length; stops+=L.stops.length;
     fares+=(L.riders||0)*T.fare;
   });
+  S.linesBuilding=building;
   allBuildings.forEach(b=>{ if(b.state!=='done') return;
     if(b.kind==='commuter') opex+=2900;
     if(b.kind==='hsr') opex+=9400; });
@@ -2994,8 +3039,13 @@ function ridersFor(mode,stops){
 }
 function computeLineRiders(){
   transitLines.forEach(L=>{
+    if(!lineOpen(L)){ L.homesServed=0; L.jobsServed=0; L.riders=0; return; }
     const e=ridersFor(L.mode,L.stops);
-    L.homesServed=e.homes; L.jobsServed=e.jobs; L.riders=e.riders;
+    // a regional line is itself a destination — that is the whole point of it
+    const T=TRANSIT[L.mode];
+    if(T.regional) e.jobs+=T.regional*L.stops.length;
+    L.homesServed=e.homes; L.jobsServed=e.jobs;
+    L.riders=(e.homes+e.jobs)>0?Math.round(2*e.homes*e.jobs/(e.homes+e.jobs)):0;
   });
 }
 
@@ -3027,6 +3077,7 @@ function straightPath(a,b){
   return out;
 }
 function segmentPath(mode,a,b){ return mode==='bus'?roadPath(a,b):straightPath(a,b); }
+function isRail(mode){ return !!(TRANSIT[mode]&&TRANSIT[mode].rail); }
 function buildFullPath(mode,stops){
   if(stops.length<2) return null;
   const path=[];
@@ -3077,7 +3128,9 @@ function renderLine(L){
   if(L.group) cityG.remove(L.group);
   L.stopAt=null;                      // rebuilt on the next tick from the new path
   const g=new THREE.Group();
-  if(L.mode==='rail') g.add(makeTrack(L.path));
+  const building=L.state==='build';
+  const rail=isRail(L.mode);
+  if(rail) g.add(makeTrack(L.path));
   else {
     // painted route stripe on the pavement
     const pts=[];
@@ -3087,17 +3140,21 @@ function renderLine(L){
   }
   L.stops.forEach(([i,j])=>{
     const c=cellCenter(i,j);
-    const m=L.mode==='rail'?makeRailStation(L.color):makeBusStop(L.color);
-    m.position.set(c.x,L.mode==='rail'?railTopY(i,j):roadTopY(i,j),c.z);
+    const m=L.mode==='hsr'?makeHSRStation():L.mode==='commuter'?makeCommuterStation()
+      :rail?makeRailStation(L.color):makeBusStop(L.color);
+    m.position.set(c.x,rail?railTopY(i,j):roadTopY(i,j),c.z);
     if(L.mode==='bus') m.position.z+=1.3;
     g.add(m);
   });
+  // A line under construction is visible but obviously not running yet
+  if(building) g.traverse(o=>{ if(o.material&&!Array.isArray(o.material)){
+    o.material=o.material.clone(); o.material.transparent=true; o.material.opacity=0.45; } });
   cityG.add(g); L.group=g;
-  // vehicles
   L.vehicles=[];
-  const count=Math.max(1,Math.round(L.path.length/(L.mode==='rail'?16:11)));
+  if(building) return;                     // nothing runs until the line opens
+  const count=Math.max(1,Math.round(L.path.length/(rail?16:11)));
   for(let k=0;k<count;k++){
-    const v=L.mode==='rail'?makeTrain(L.color):makeBus(L.color);
+    const v=rail?makeTrain(L.color):makeBus(L.color);
     carG.add(v);
     L.vehicles.push({m:v,t:k/count*L.path.length,dir:1,wait:0});
   }
@@ -3446,6 +3503,7 @@ function dailyTick(){
     if(!S._rebuiltOnce){ S._rebuiltOnce=true;
       advise('🧹 Insurance has cleared the burned-out lots. They are vacant and buildable again — rebuilding takes a few months, but the land is not lost.'); }
   }
+  transitBuildTick();
   recount();
   computeUtilities();
   stepWaterStorage();
@@ -3598,12 +3656,11 @@ function monthlyTick(){
       if(S.month%6===0) advise(`⚡ Your grid is only <b>${Math.round(S.cleanPct*100)}% clean</b> against an SB 100 target of ${Math.round(tgt*100)}%. The CPUC has assessed ${fmt$(fine)} in penalties. Retire the gas peakers or add renewables and storage.`,'warn');
     } else S.budget.sb100=0;
   }
-  const hsrBuilding=allBuildings.find(b=>b.kind==='hsr'&&(b.state==='build'||b.state==='ceqa'));
+  const hsrBuilding=transitLines.find(L=>L.mode==='hsr'&&L.state==='build');
   if(hsrBuilding&&Math.random()<0.22){
     const over=Math.round(400000+Math.random()*1600000);
     S.money-=over;
-    if(hsrBuilding.state==='build') hsrBuilding.prog=Math.max(0,hsrBuilding.prog-0.06);
-    else hsrBuilding.ceqaLeft+=60;
+    hsrBuilding.daysLeft+=Math.round(40+Math.random()*90);
     advise(`🚄 <b>High-speed rail delay.</b> ${['A right-of-way parcel went to eminent domain hearings.','The Authority revised the alignment again.','A utility relocation was not in the budget.','Litigation from an adjacent landowner paused work.','The cost estimate was revised upward. Again.'][Math.floor(Math.random()*5)]} ${fmt$(over)} and more time.`,'warn');
   }
   if(S.gwOverdraft&&S.day-(S._gwWarn||-9999)>760){
@@ -3941,10 +3998,15 @@ function renderPanel(){
       <div class="uRow"><span>Route length</span><b>${(S.transitMiles||0).toFixed(2)} mi · ${S.transitStops||0} stops</b></div>
       ${S.transitGrants?`<div class="uRow"><span>TIRCP grants received</span><b class="pos">${fmt$(S.transitGrants)}</b></div>`:''}
       <div class="mapSect">Lines</div>
-      ${transitLines.map(L=>`<div class="mapItem" style="border-left-color:#${L.color.toString(16).padStart(6,'0')}">
-        <div class="t">${TRANSIT[L.mode].ico} ${L.name}</div>
-        <div class="d">${L.stops.length} ${L.mode==='rail'?'stations':'stops'} · ${L.path.length} segments · ${fmtN(L.riders||0)} riders/day</div>
-        <div class="d">${fmt$(L.stops.length*TRANSIT[L.mode].stopOpex+L.path.length*TRANSIT[L.mode].cellOpex)}/mo to operate</div></div>`).join('')}
+      ${transitLines.map(L=>{
+        const M=TRANSIT[L.mode], b=!lineOpen(L);
+        const pct=b&&L.totalDays?Math.round((1-L.daysLeft/L.totalDays)*100):100;
+        return `<div class="mapItem" style="border-left-color:#${L.color.toString(16).padStart(6,'0')};${b?'opacity:.75':''}">
+        <div class="t">${M.ico} ${L.name}${b?' <span style="color:#e0a44f">· under construction</span>':''}</div>
+        <div class="d">${L.stops.length} ${isRail(L.mode)?'stations':'stops'} · ${L.path.length} segments${b?'':` · ${fmtN(L.riders||0)} riders/day`}</div>
+        <div class="d">${b
+          ? `${pct}% built · about ${Math.max(1,Math.round(L.daysLeft/30))} month${L.daysLeft>45?'s':''} to opening`
+          : `${fmt$(L.stops.length*M.stopOpex+L.path.length*M.cellOpex)}/mo to operate`}</div></div>`;}).join('')}
       ${cs?`<div class="mapItem"><div class="t">🚉 Commuter Rail Station${cs>1?' ×'+cs:''}</div><div class="d">Regional job access for your residents</div></div>`:''}
       ${hs?`<div class="mapItem"><div class="t">🚄 High-Speed Rail Station${hs>1?' ×'+hs:''}</div><div class="d">Statewide network connection</div></div>`:''}
       `:'<p style="color:#a8b0c0">No transit yet. A bus route is cheap and runs on the streets you already built. Light rail costs far more but pulls density toward every station.</p>')
@@ -4044,7 +4106,8 @@ function serialize(){
   const {money,day,dom,month,year,startYear,pop,incorporated,cityName,drought,reservoir,approval,crime,tut,tutPending,termCount,disasterHeat,heatwave,floodTimer}=S;
   const par=parcels.filter(p=>p.state!=='void').map(p=>({id:p.id,i0:p.i0,j0:p.j0,i1:p.i1,j1:p.j1,z:p.zone,
     st:p.state,dl:p.daysLeft,td:p.totalDays,mt:p.mapType,cq:p.ceqa,fe:p.fees,tr:p.tract,ap:p.appealed}));
-  const lines=transitLines.map(L=>({m:L.mode,s:L.stops,n:L.name,c:L.color}));
+  const lines=transitLines.map(L=>({m:L.mode,s:L.stops,n:L.name,c:L.color,
+    st:L.state||'done',dl:L.daysLeft||0,td:L.totalDays||0}));
   return {v:7,map:S.mapId,parcels:par,lines,
     S:{money,day,dom,month,year,startYear,pop,incorporated,cityName,drought,reservoir,approval,crime,tut,tutPending,termCount,disasterHeat,heatwave,floodTimer,
        impactFeesTotal:S.impactFeesTotal,tractsRecorded:S.tractsRecorded,lockDay:S.lockDay,
@@ -4131,7 +4194,8 @@ function loadGame(data){
     if(!path) return;
     lineSeq++;
     const L={id:lineSeq,mode:d.m,stops:d.s,path,color:d.c||LINE_COLORS[(lineSeq-1)%LINE_COLORS.length],
-      name:d.n||((d.m==='rail'?'Line ':'Route ')+lineSeq),riders:0,vehicles:[],group:null};
+      name:d.n||(LINE_NAME(d.m)+lineSeq),riders:0,vehicles:[],group:null,
+      state:d.st||'done',daysLeft:d.dl||0,totalDays:d.td||0};
     transitLines.push(L); renderLine(L);
   });
   computeUtilities(); computeTransit();
