@@ -2374,19 +2374,28 @@ function drawDraftPreview(){
   cityG.remove(d.preview);
   d.preview=new THREE.Group(); cityG.add(d.preview);
   const col=LINE_COLORS[lineSeq%LINE_COLORS.length];
-  d.stops.forEach(([i,j])=>{
+  const marker=(i,j,ghost)=>{
     const c=cellCenter(i,j);
     const m=new THREE.Mesh(new THREE.CylinderGeometry(0.9,0.9,0.3,10),
-      new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.85}));
+      new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:ghost?0.35:0.85}));
     m.position.set(c.x,cellTopY(i,j)+0.5,c.z); d.preview.add(m);
-  });
-  const path=buildFullPath(d.mode,d.stops);
-  if(path&&path.length>1){
+  };
+  const strip=(stops,ghost)=>{
+    const path=buildFullPath(d.mode,stops);
+    if(!path||path.length<2) return false;
     const pts=path.map(([i,j])=>{ const c=cellCenter(i,j);
       return new THREE.Vector3(c.x,(d.mode==='rail'?railTopY(i,j):roadTopY(i,j))+0.3,c.z); });
     d.preview.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({color:col})));
-  }
+      new THREE.LineBasicMaterial({color:col,transparent:true,opacity:ghost?0.4:1})));
+    return true;
+  };
+  d.stops.forEach(([i,j])=>marker(i,j,false));
+  strip(d.stops,false);
+  // the segment the next click would add
+  if(d.hover&&d.stops.length){
+    marker(d.hover[0],d.hover[1],true);
+    strip([d.stops[d.stops.length-1],d.hover],true);
+  } else if(d.hover) marker(d.hover[0],d.hover[1],true);
 }
 function renderTransitBar(){
   const d=draftLine;
@@ -2394,9 +2403,24 @@ function renderTransitBar(){
   const T=TRANSIT[d.mode];
   const info=d.stops.length>=2?lineCost(d.mode,d.stops):null;
   const broken=d.stops.length>=2&&!info.path;
+  // Project what the line would carry, so the decision is made before the money
+  // is spent rather than discovered a month later in the transit panel.
+  const preview=d.stops.concat(d.hover&&!d.stops.some(([a,b])=>a===d.hover[0]&&b===d.hover[1])?[d.hover]:[]);
+  const est=preview.length>=2?ridersFor(d.mode,preview):null;
+  const estOpex=preview.length>=2?lineCost(d.mode,preview).opex:0;
+  const farebox=est&&estOpex>0?est.riders*T.fare/estOpex:0;
+  let verdict='';
+  if(est&&preview.length>=2){
+    if(est.homes<8) verdict='<span style="color:#ff8a7a">Almost no homes in walking distance — nobody to pick up.</span>';
+    else if(est.jobs<8) verdict='<span style="color:#ff8a7a">Nowhere to go — run it past shops, industry or a regional station.</span>';
+    else if(farebox<0.12) verdict='<span style="color:#e0a44f">Thin ridership for the cost. Serving denser blocks would carry more.</span>';
+    else verdict='<span style="color:#8fd97a">Links homes to somewhere worth going.</span>';
+  }
   transitBar.style.display='block';
-  transitBar.innerHTML=`<b>${T.ico} New ${T.name}</b> — click to place ${d.mode==='bus'?'stops along your streets':'stations'}.
+  transitBar.innerHTML=`<b>${T.ico} New ${T.name}</b> — click near ${d.mode==='bus'?'a street':'open land'} to drop ${d.mode==='bus'?'a stop':'a station'}; it snaps to the closest valid spot.
     ${d.stops.length} stop${d.stops.length===1?'':'s'}${info?` · ${info.cells} segments · <b>${fmt$(info.cap)}</b> capital · ${fmt$(info.opex)}/mo`:''}
+    ${est?`<br>Would serve <b>${fmtN(est.homes)}</b> residents and <b>${fmtN(est.jobs)}</b> jobs → <b>${fmtN(est.riders)}</b> riders · ${fmt$(Math.round(est.riders*T.fare))}/mo fares · farebox ${Math.round(farebox*100)}%`:''}
+    ${verdict?`<br>${verdict}`:''}
     ${broken?'<br><span style="color:#ff8a7a">No street route between those stops — buses must follow a connected road.</span>':''}
     ${d.mode==='rail'&&info?`<br><span style="color:#8fd97a">TIRCP state grant would return ${fmt$(Math.round(info.cap*TIRCP_SHARE))}</span>`:''}
     <div class="zonePick" style="margin-top:6px">
@@ -2450,10 +2474,10 @@ canvas.addEventListener('pointerdown',e=>{
     else if(LINE_TOOLS.includes(S.tool)){
       const p=pickGround(e.clientX,e.clientY);
       if(p&&draftLine){
-        const why=stopValid(draftLine.mode,p.i,p.j);
-        if(why) toast('🚏 '+why,true);
-        else if(draftLine.stops.some(([a,b])=>a===p.i&&b===p.j)) toast('🚏 That stop is already on the line.');
-        else { draftLine.stops.push([p.i,p.j]); drawDraftPreview(); renderTransitBar(); }
+        const snap=snapStop(draftLine.mode,p.i,p.j);
+        if(!snap) toast('🚏 '+(stopValid(draftLine.mode,p.i,p.j)||'No room for a stop near there'),true);
+        else if(draftLine.stops.some(([a,b])=>a===snap[0]&&b===snap[1])) toast('🚏 That stop is already on the line.');
+        else { draftLine.stops.push(snap); draftLine.hover=null; drawDraftPreview(); renderTransitBar(); }
       }
     }
     else { dragMode='paint';
@@ -2487,7 +2511,18 @@ canvas.addEventListener('pointermove',e=>{
   if(!p){ hoverMesh.visible=false; hideTip(); return; }
   if(LINE_TOOLS.includes(S.tool)){
     hideTip();
-    showHover(p.i,p.j,!stopValid(S.tool,p.i,p.j));
+    // show the snapped target and the segment it would add, before committing
+    const snap=draftLine?snapStop(draftLine.mode,p.i,p.j):null;
+    showHover(snap?snap[0]:p.i,snap?snap[1]:p.j,!!snap);
+    if(draftLine){
+      const k=snap?snap.join(','):null;
+      if(k!==draftLine.hoverKey){
+        draftLine.hoverKey=k;
+        draftLine.hover=snap&&!draftLine.stops.some(([a,b])=>a===snap[0]&&b===snap[1])?snap:null;
+        drawDraftPreview();
+        renderTransitBar();
+      }
+    }
     return;
   }
   if(S.tool==='subdivide'){
@@ -2763,14 +2798,14 @@ function regionalJobs(){
 function computeTransit(){
   rebuildCoverage();
   computeLineRiders();
+  // Citywide ridership is what the lines actually carry, plus the regional
+  // stations, which draw whether or not a local route reaches them.
   let riders=0;
+  transitLines.forEach(L=>riders+=L.riders||0);
   allBuildings.forEach(b=>{
     if(b.state!=='done') return;
-    const cov=transitCoverage(b.i,b.j);
-    if(cov<=0) return;
-    if(b.kind==='res') riders+=effResCap(b)*cov*0.55;
-    else if(b.kind==='com') riders+=COM_JOBS[b.level]*cov*0.45;
-    else if(b.kind==='ind') riders+=indJobsOf(b)*cov*0.28;
+    if(b.kind==='commuter') riders+=170;
+    if(b.kind==='hsr') riders+=520;
   });
   S.transitRiders=Math.round(riders);
   let opex=0,fares=0,cells=0,stops=0;
@@ -2790,28 +2825,42 @@ function computeTransit(){
   S.transitMiles=+(cells*0.02).toFixed(2);
   S.modeShare=S.pop>0?clamp(riders/(S.pop*0.62),0,0.9):0;
 }
-// per-line ridership, for the panel
+// A trip needs both ends. A line that only touches houses carries nobody to
+// work, and one that only touches offices has nobody to carry — so score a line
+// on the homes AND the jobs it links, via a harmonic mean that collapses to zero
+// if either side is missing. This is what makes routing a decision instead of a
+// question of how much area you painted.
+function ridersFor(mode,stops){
+  const T=TRANSIT[mode];
+  let homes=0,jobs=0,regional=0;
+  const seen=new Set();
+  stops.forEach(([si,sj])=>{
+    for(let dx=-T.radius;dx<=T.radius;dx++) for(let dz=-T.radius;dz<=T.radius;dz++){
+      const i=si+dx,j=sj+dz;
+      if(i<0||j<0||i>=G||j>=G) continue;
+      const k=i+','+j; if(seen.has(k)) continue;
+      const b=grid[i][j].b;
+      if(!b||b.state!=='done') continue;
+      seen.add(k);
+      const d=Math.max(Math.abs(dx),Math.abs(dz));
+      const w=T.weight*(1-d/(T.radius+1));
+      if(b.kind==='res') homes+=effResCap(b)*w*0.55;
+      else if(b.kind==='com') jobs+=COM_JOBS[b.level]*w*0.62;
+      else if(b.kind==='ind') jobs+=indJobsOf(b)*w*0.42;
+      else if(b.kind==='datacenter') jobs+=DATACENTER.jobs*w*0.42;
+      // reaching the regional network is a destination in itself
+      else if(b.kind==='commuter') regional+=220*w;
+      else if(b.kind==='hsr') regional+=900*w;
+    }
+  });
+  jobs+=regional;
+  const riders=(homes+jobs)>0?Math.round(2*homes*jobs/(homes+jobs)):0;
+  return {homes:Math.round(homes),jobs:Math.round(jobs),riders};
+}
 function computeLineRiders(){
   transitLines.forEach(L=>{
-    const T=TRANSIT[L.mode];
-    let r=0;
-    const seen=new Set();
-    L.stops.forEach(([si,sj])=>{
-      for(let dx=-T.radius;dx<=T.radius;dx++) for(let dz=-T.radius;dz<=T.radius;dz++){
-        const i=si+dx,j=sj+dz;
-        if(i<0||j<0||i>=G||j>=G) continue;
-        const k=i+','+j; if(seen.has(k)) continue;
-        const b=grid[i][j].b;
-        if(!b||b.state!=='done') continue;
-        seen.add(k);
-        const d=Math.max(Math.abs(dx),Math.abs(dz));
-        const w=T.weight*(1-d/(T.radius+1));
-        if(b.kind==='res') r+=effResCap(b)*w*0.55;
-        else if(b.kind==='com') r+=COM_JOBS[b.level]*w*0.45;
-        else if(b.kind==='ind') r+=indJobsOf(b)*w*0.28;
-      }
-    });
-    L.riders=Math.round(r);
+    const e=ridersFor(L.mode,L.stops);
+    L.homesServed=e.homes; L.jobsServed=e.jobs; L.riders=e.riders;
   });
 }
 
@@ -2864,6 +2913,21 @@ function stopValid(mode,i,j){
   }
   return null;
 }
+// Hitting a single 4-unit road cell from a zoomed-out camera is fiddly, and
+// missing it by one cell used to just refuse the click. Take the nearest legal
+// spot instead — you meant that street.
+const SNAP_R=3;
+function snapStop(mode,i,j){
+  if(!stopValid(mode,i,j)) return [i,j];
+  let best=null,bd=1e9;
+  for(let dx=-SNAP_R;dx<=SNAP_R;dx++) for(let dz=-SNAP_R;dz<=SNAP_R;dz++){
+    const a=i+dx,b=j+dz;
+    if(stopValid(mode,a,b)) continue;
+    const d=dx*dx+dz*dz;
+    if(d<bd){ bd=d; best=[a,b]; }
+  }
+  return best;
+}
 function lineCost(mode,stops){
   const T=TRANSIT[mode];
   const path=buildFullPath(mode,stops);
@@ -2876,6 +2940,7 @@ function lineCost(mode,stops){
 // ---------- line rendering ----------
 function renderLine(L){
   if(L.group) cityG.remove(L.group);
+  L.stopAt=null;                      // rebuilt on the next tick from the new path
   const g=new THREE.Group();
   if(L.mode==='rail') g.add(makeTrack(L.path));
   else {
@@ -2899,17 +2964,33 @@ function renderLine(L){
   for(let k=0;k<count;k++){
     const v=L.mode==='rail'?makeTrain(L.color):makeBus(L.color);
     carG.add(v);
-    L.vehicles.push({m:v,t:k/count*L.path.length,dir:1});
+    L.vehicles.push({m:v,t:k/count*L.path.length,dir:1,wait:0});
   }
 }
 function transitTick(dt){
   transitLines.forEach(L=>{
     const T=TRANSIT[L.mode], n=L.path.length;
     if(n<2) return;
+    // Index of each stop along the path, so vehicles can actually dwell at them
+    if(!L.stopAt){
+      L.stopAt=L.stops.map(([i,j])=>{
+        let best=0,bd=1e9;
+        L.path.forEach(([a,b],ix)=>{ const d=(a-i)*(a-i)+(b-j)*(b-j); if(d<bd){bd=d;best=ix;} });
+        return best;
+      }).sort((a,b)=>a-b);
+    }
     L.vehicles.forEach(v=>{
-      v.t+=dt*T.speed*v.dir;
-      if(v.t>=n-1){ v.t=n-1; v.dir=-1; }
-      if(v.t<=0){ v.t=0; v.dir=1; }
+      if(v.wait>0){ v.wait-=dt; }
+      else {
+        const prev=v.t;
+        v.t+=dt*T.speed*v.dir;
+        // pause at a stop when one is passed, and turn around at the ends
+        for(const s of L.stopAt){
+          if(s>0&&s<n-1&&((prev<s&&v.t>=s)||(prev>s&&v.t<=s))){ v.t=s; v.wait=1.1; break; }
+        }
+        if(v.t>=n-1){ v.t=n-1; v.dir=-1; v.wait=1.8; }
+        if(v.t<=0){ v.t=0; v.dir=1; v.wait=1.8; }
+      }
       const k=Math.floor(v.t), f=v.t-k;
       const a=L.path[k], b=L.path[Math.min(k+1,n-1)];
       const ca=cellCenter(a[0],a[1]), cb=cellCenter(b[0],b[1]);
