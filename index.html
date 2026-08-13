@@ -1716,7 +1716,12 @@ function rectValidity(i0,j0,i1,j1){
     if(!cellBuildable(i,j)) return {ok:false,why:'Includes unbuildable land (too steep, wet, or water)'};
     const c=grid[i][j];
     if(c.kind||c.b) return {ok:false,why:'Overlaps existing streets, lots or buildings'};
-    if(parcelAt(i,j)) return {ok:false,why:'Overlaps another recorded or pending map'};
+    const par=parcelAt(i,j);
+    // Cleared lots inside a recorded tract read as empty land, so say what they
+    // actually are rather than refusing with a message about maps.
+    if(par&&par.state==='recorded')
+      return {ok:false,why:`Already platted as part of ${par.tract} — use 🧱 Infill Lot to zone these lots (drag to do several)`};
+    if(par) return {ok:false,why:'Overlaps another recorded or pending map'};
   }
   if(!rectHasFrontage(i0,j0,i1,j1)) return {ok:false,why:'No frontage — a subdivision must touch an existing street'};
   return {ok:true};
@@ -2758,7 +2763,17 @@ function showTip(p,mx,my){
     html=`<b>Open land</b><br>Elevation ${Math.round(h*12+(MAP.hasOcean?0:380))} ft`;
     if(nearWaterCell(p.i,p.j)) html+=`<br>🌊 ${MAP.ceqaWaterLabel} — longer environmental review here`;
     if(!cellBuildable(p.i,p.j)) html+=cellBridgeable(p.i,p.j)?'<br>🌉 Water — a road here becomes a bridge':'<br><span style="color:#ff9c5b">Too steep or wet to build</span>';
-    else html+='<br><span style="color:#ff9a3c">📐 Unsubdivided — use the Subdivide tool</span>';
+    else {
+      // A cleared lot inside a recorded tract is still platted land. Sending the
+      // player to Subdivide here is wrong — that tool refuses, because the map
+      // is already on record.
+      const par=parcelAt(p.i,p.j);
+      if(par&&par.state==='recorded')
+        html+=`<br><span style="color:#8fd97a">🧱 Cleared lot in ${par.tract} — already platted. Use <b>Infill Lot</b> to zone it again.</span>`;
+      else if(par)
+        html+=`<br><span style="color:#ff9a3c">📋 Inside ${par.tract}, still in review</span>`;
+      else html+='<br><span style="color:#ff9a3c">📐 Unsubdivided — use the Subdivide tool</span>';
+    }
     if(majorTransit(p.i,p.j)) html+='<br><span style="color:#8fd97a">🚏 Transit priority area — denser and faster to approve here</span>';
   }
   tipEl.innerHTML=html;
