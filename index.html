@@ -892,7 +892,67 @@ function makeCom(level,vh){
   }
   return g;
 }
-function makeInd(level,vh){
+function makeInd(type,level,vh){
+  if(type==='IW') return makeWarehouse(level,vh);
+  if(type==='IA') return makeAgProc(level,vh);
+  if(type==='IR') return makeRnD(level,vh);
+  return makeLightInd(level,vh);
+}
+// Logistics: a long flat shed, a row of dock doors and a trailer yard.
+function makeWarehouse(level,vh){
+  const g=new THREE.Group();
+  const h=level>=2?2.4:1.7, d=level>=2?3.4:2.8;
+  g.add(box(3.9,0.1,3.9,M.asphalt));
+  g.add(box(3.6,h,d,M.white,0,0.05,-0.3));
+  g.add(box(3.7,0.16,d+0.1,M.indDark,0,h+0.05,-0.3));
+  // dock doors along the front
+  for(let k=-1;k<=1;k++) g.add(box(0.72,h*0.55,0.1,M.indDark,k*1.15,0.05,-0.3+d/2));
+  // trailers parked in the yard
+  const n=level>=2?3:2;
+  for(let k=0;k<n;k++){
+    const x=-1.35+k*1.35;
+    g.add(box(1.05,0.6,0.5,vh>0.5?M.white:M.stucco[2],x,0.1,1.45));
+    g.add(cyl(0.1,0.1,0.34,M.indDark,x+0.45,0.05,1.45,6));
+  }
+  return g;
+}
+// Food processing: silos, a packing shed and cold-storage condensers.
+function makeAgProc(level,vh){
+  const g=new THREE.Group();
+  g.add(box(3.9,0.1,3.9,M.concrete));
+  const sh=level>=2?2.4:1.9;
+  g.add(box(2.5,sh,2.6,M.white,-0.55,0.05,0.3));
+  g.add(box(2.6,0.18,2.7,M.ind,-0.55,sh+0.05,0.3));
+  const silos=level>=2?3:2;
+  for(let k=0;k<silos;k++){
+    const x=1.05, z=-1.3+k*1.25;
+    g.add(cyl(0.52,0.52,level>=2?3.2:2.5,M.tan,x,0.05,z,12));
+    g.add(cyl(0.56,0.3,0.42,M.ind,x,(level>=2?3.25:2.55),z,12));
+  }
+  // condenser units on the shed roof
+  for(let k=-1;k<=1;k+=2) g.add(box(0.6,0.34,0.6,M.indDark,-0.55+k*0.7,sh+0.23,0.3));
+  if(level>=2) plumes.push({pos:new THREE.Vector3(-0.55,sh+1.6,0.3),g,color:0xe4ecf2,scale:2.0});
+  return g;
+}
+// R&D: clean low-rise glass and stucco, a courtyard, rooftop plant. Reads as a
+// campus rather than a plant, which is the point — it can sit next to housing.
+function makeRnD(level,vh){
+  const g=new THREE.Group();
+  g.add(box(3.9,0.1,3.9,M.concrete));
+  const h=[0,1.9,2.8,3.9][level]||1.9;
+  g.add(box(3.4,h,1.5,M.glassBlue,0,0.05,-0.85));
+  g.add(box(3.5,0.18,1.6,M.white,0,h+0.05,-0.85));
+  g.add(box(1.5,h*0.8,1.3,M.white,-0.95,0.05,0.9));
+  g.add(box(1.6,0.16,1.4,M.ind,-0.95,h*0.8+0.05,0.9));
+  // courtyard planting and a link bridge
+  g.add(box(1.4,0.08,1.2,M.parkGrass,0.95,0.06,0.9));
+  if(level>=2) g.add(box(1.9,0.22,0.4,M.white,0.1,h*0.55,0.1));
+  for(let k=-1;k<=1;k+=2) g.add(box(0.5,0.36,0.5,M.indDark,k*1.0,h+0.14,-0.85));
+  if(level>=3){ g.add(box(2.6,0.9,1.1,M.glassBlue,0,h+0.23,-0.85));
+    g.add(box(2.7,0.16,1.2,M.white,0,h+1.13,-0.85)); }
+  return g;
+}
+function makeLightInd(level,vh){
   const g=new THREE.Group();
   const v=Math.floor(vh*2);
   if(level===1){
@@ -1214,7 +1274,8 @@ function cellTopY(i,j){
 function roadTopY(i,j){ const c=grid[i][j]; return c.deckY!=null?c.deckY:cellTopY(i,j)+0.26; }
 
 // zone overlays
-const zoneColors={R1:0x59c24b,R2:0x8cd44f,R3:0xe0d04a,MU:0xd06fd0,C:0x4b9fe0,I:0xd8b44b};
+const zoneColors={R1:0x59c24b,R2:0x8cd44f,R3:0xe0d04a,MU:0xd06fd0,C:0x4b9fe0,
+  IL:0xd8b44b,IW:0xb8823a,IA:0xc9a94e,IR:0x9a7fd0,I:0xd8b44b};
 const zoneGeo=new THREE.PlaneGeometry(CELL*0.92,CELL*0.92).rotateX(-Math.PI/2);
 const zoneMats={};
 for(const k in zoneColors) zoneMats[k]=new THREE.MeshBasicMaterial({color:zoneColors[k],transparent:true,opacity:0.34,depthWrite:false});
@@ -1322,7 +1383,7 @@ function startBuilding(i,j,kind,level,opts={}){
   let group;
   if(kind==='res') group=makeRes(opts.zt||'R1',level,vh);
   else if(kind==='com') group=makeCom(level,vh);
-  else if(kind==='ind') group=makeInd(level,vh);
+  else if(kind==='ind') group=makeInd(opts.zt&&IND_TYPES[opts.zt]?opts.zt:'IL',level,vh);
   else if(ENERGY_KINDS.includes(kind)){ group=makeEnergy(kind); attachPlumes(); }
   else if(WATER_KINDS.includes(kind)){ group=makeWater(kind); }
   else if(kind==='datacenter'){ group=makeDataCenter(); attachPlumes(); }
@@ -1805,11 +1866,35 @@ const RES_TYPES={
       cap:[0,18,32],val:[0,3000000,5400000],units:[0,6,10],jobs:[0,8,16],lvNeed:[0,0,64],trips:[0,6.8,10.5]},
 };
 const RES_ZONES=['R1','R2','R3','MU'];
-const ALL_ZONES=['R1','R2','R3','MU','C','I'];
+const ALL_ZONES=['R1','R2','R3','MU','C','IL','IW','IA','IR'];
 function zt(b){ return b.zt&&RES_TYPES[b.zt]?b.zt:'R1'; }
 const RES_CAP=[0,4,12,40], RES_VAL=[0,750000,1900000,5200000], RES_UNITS=[0,1,3,12];
 const COM_JOBS=[0,6,16,45], COM_VAL=[0,900000,2200000,5500000];
-const IND_JOBS=[0,10,26,26], IND_VAL=[0,1100000,2600000,2600000];
+// Industrial designations. Every one of these is a real trade the council has to
+// make: warehouses hire the most people and wreck the roads and the tax base,
+// food processing drinks the water table, and R&D pays beautifully but employs
+// comparatively few. trips = daily vehicle trips, water = af, power = MW.
+const IND_TYPES={
+  IL:{name:'Light Industrial (M-1)',ico:'🏭',short:'M-1',maxL:2,
+      jobs:[0,10,26], val:[0,1100000,2600000], lvNeed:[0,0,48],
+      trips:[0,3.0,4.6], water:[0,0.4,0.9], power:[0,2.0,4.2], nuisance:16,
+      note:'Machine shops, contractors and flex space. The balanced default — moderate jobs, moderate traffic, and it does not poison the land around it.'},
+  IW:{name:'Logistics & Warehouse (M-2)',ico:'📦',short:'M-2',maxL:2,
+      jobs:[0,18,44], val:[0,900000,1800000], lvNeed:[0,0,38],
+      trips:[0,7.5,13.0], water:[0,0.2,0.35], power:[0,1.4,2.6], nuisance:32,
+      note:'Distribution centers off the interstate. More jobs per acre than anything else you can zone, and the least assessed value — the Inland Empire bargain. The truck traffic is punishing and the neighbors know it.'},
+  IA:{name:'Agriculture & Food Processing',ico:'🌾',short:'A-P',maxL:2,
+      jobs:[0,14,32], val:[0,750000,1500000], lvNeed:[0,0,28],
+      trips:[0,4.2,6.4], water:[0,3.2,6.8], power:[0,1.8,3.4], nuisance:24,
+      note:'Packing houses, canneries and cold storage. Steady work and cheap land — but processing is by far the thirstiest thing in your city, and in a drought year that bill comes due.'},
+  IR:{name:'Research & Development',ico:'🔬',short:'R&D',maxL:3,
+      jobs:[0,12,30,62], val:[0,3200000,7400000,14500000], lvNeed:[0,0,62,82],
+      trips:[0,2.4,4.0,6.6], water:[0,0.7,1.5,2.6], power:[0,3.0,6.5,12.0], nuisance:0,
+      note:'Biotech and advanced manufacturing. Three to five times the assessed value per acre of any other industry, quiet enough to sit beside housing, and power-hungry. It will only come to land that is already worth something.'},
+};
+const IND_ZONES=['IL','IW','IA','IR'];
+function it(b){ return b.zt&&IND_TYPES[b.zt]?b.zt:'IL'; }
+function indJobsOf(b){ return IND_TYPES[it(b)].jobs[b.level]||0; }
 const CIVIC_OPEX={fire:1300,police:1200,school:1900,park:250,cityhall:2200,
   well:320,intake:420,aqueduct:1500,desal:3800,recycle:900,cistern:240,bank:620,
   solar:260,wind:300,gas:1450,hydro:700,geo:820,battery:340,datacenter:2600};
@@ -1978,7 +2063,9 @@ function setTool(id){
 }
 const ZONE_PICK=[
   ['R1','🏠 R-1','4 per lot'],['R2','🏘️ R-2','10 per lot'],['R3','🏢 R-3','26 per lot'],
-  ['MU','🏙️ Mixed','housing + shops'],['C','🏬 Commercial','sales tax'],['I','🏭 Industrial','jobs'],
+  ['MU','🏙️ Mixed','housing + shops'],['C','🏬 Commercial','sales tax'],
+  ['IL','🏭 M-1 Light','10 jobs · balanced'],['IW','📦 M-2 Logistics','18 jobs · heavy trucks'],
+  ['IA','🌾 Ag Processing','14 jobs · thirsty'],['IR','🔬 R&D','12 jobs · high value'],
 ];
 function renderSubHint(){
   const sh=document.getElementById('subHint');
@@ -1994,6 +2081,7 @@ setTool('select');
 
 // ---------- zoning / tools ----------
 function setZone(i,j,z){
+  if(z==='I') z='IL';                       // saves from before industry was split
   if(z==='R'||!zoneColors[z]) z='R1';
   const cell=grid[i][j];
   cell.kind='zone'; cell.zone=z;
@@ -2097,10 +2185,22 @@ const IMPACT_FEES={
   MU:[['Quimby Act park fee (Gov. §66477)',26000],['School facilities fee (Ed. §17620)',19000],['Traffic impact fee (DIF)',21000]],
   C:[['School facilities fee (commercial)',1200],['Traffic impact fee (DIF)',9000]],
   I:[['School facilities fee (industrial)',900],['Traffic impact fee (DIF)',6000]],
+  IL:[['School facilities fee (industrial)',900],['Traffic impact fee (DIF)',6000]],
+  // A distribution center's fee is almost all traffic, because that is almost all
+  // of its impact — this is the fight every warehouse project in the state has.
+  IW:[['School facilities fee (industrial)',700],['Traffic impact fee (DIF)',19000],
+      ['Truck route pavement impact fee',7000]],
+  IA:[['School facilities fee (industrial)',700],['Traffic impact fee (DIF)',7000],
+      ['Water connection fee (processing)',11000]],
+  IR:[['School facilities fee (industrial)',1400],['Traffic impact fee (DIF)',5000],
+      ['Utility capacity fee (R&D)',9000]],
 };
 const ZONE_LABEL={R1:'Single-Family (R-1)',R2:'Townhomes (R-2)',R3:'Multi-Family (R-3)',
-  MU:'Mixed-Use',C:'Commercial',I:'Industrial'};
-const ZONE_SHORT={R1:'🏠 R-1',R2:'🏘️ R-2',R3:'🏢 R-3',MU:'🏙️ Mixed-Use',C:'🏬 Commercial',I:'🏭 Industrial'};
+  MU:'Mixed-Use',C:'Commercial',I:'Industrial',
+  IL:'Light Industrial (M-1)',IW:'Logistics & Warehouse (M-2)',
+  IA:'Agriculture & Food Processing',IR:'Research & Development'};
+const ZONE_SHORT={R1:'🏠 R-1',R2:'🏘️ R-2',R3:'🏢 R-3',MU:'🏙️ Mixed-Use',C:'🏬 Commercial',I:'🏭 Industrial',
+  IL:'🏭 M-1',IW:'📦 M-2 Logistics',IA:'🌾 Ag Processing',IR:'🔬 R&D'};
 const CEQA_LABEL={
   exempt:['Categorical Exemption (Class 15 — minor land division)','ex'],
   mnd:['Mitigated Negative Declaration','mnd'],
@@ -2455,7 +2555,8 @@ function showTip(p,mx,my){
     const b=cell.b, names={com:'Commercial',ind:'Industrial',fire:'Fire Station',police:'Police Station',
       school:'School',park:'Park',cityhall:'City Hall'};
     names.commuter='Commuter Rail Station'; names.hsr='High-Speed Rail Station';
-    const label=b.kind==='res'?RES_TYPES[zt(b)].name:(ENERGY[b.kind]?ENERGY[b.kind].name:WATERSRC[b.kind]?WATERSRC[b.kind].name:(names[b.kind]||b.kind));
+    const label=b.kind==='res'?RES_TYPES[zt(b)].name:b.kind==='ind'?IND_TYPES[it(b)].name
+      :(ENERGY[b.kind]?ENERGY[b.kind].name:WATERSRC[b.kind]?WATERSRC[b.kind].name:(names[b.kind]||b.kind));
     html=`<b>${label}${['res','com','ind'].includes(b.kind)?' · Level '+b.level:''}</b><br>`;
     if(b.state==='ceqa') html+=`${MAP.hasOcean&&nearWaterCell(p.i,p.j)?'🏛 Coastal Commission':'📋 CEQA'} review — ${Math.ceil(b.ceqaLeft)} days left`;
     else if(b.state==='build') html+=`🚧 Under construction — ${Math.round(b.prog*100)}%`;
@@ -2477,7 +2578,13 @@ function showTip(p,mx,my){
           :'Cuts citywide demand 22%<br>';
         if(w.power) html+=`Draws ${w.power} MW<br>`; }
       if(b.kind==='com') html+=`Jobs: ${COM_JOBS[b.level]}<br>`;
-      if(b.kind==='ind') html+=`Jobs: ${IND_JOBS[b.level]}<br>`;
+      if(b.kind==='ind'){ const T=IND_TYPES[it(b)];
+        html+=`Jobs: ${T.jobs[b.level]||0}<br>`;
+        html+=`Truck &amp; worker trips: ${T.trips[b.level]||0}/day<br>`;
+        if(T.water[b.level]) html+=`Water: ${T.water[b.level]} af<br>`;
+        if(T.power[b.level]) html+=`Power: ${T.power[b.level]} MW<br>`;
+        html+=T.nuisance?`<span style="color:#e0a44f">Drags nearby land value −${T.nuisance}</span><br>`
+          :`<span style="color:#8fd97a">Good neighbour — no land-value penalty</span><br>`; }
       if(['res','com','ind'].includes(b.kind)) html+=`Land value: ${Math.round(b.lv)}<br>`;
       if(b.assessed>0) html+=`Assessed (Prop 13): ${fmt$(b.assessed)}`;
     }
@@ -2513,22 +2620,28 @@ function zonedEmptyCells(z){
 function tryDevelop(z,kind){
   let cells=[];
   if(kind==='res') RES_ZONES.forEach(rz=>zonedEmptyCells(rz).forEach(c=>cells.push([c[0],c[1],rz])));
+  else if(kind==='ind') IND_ZONES.forEach(iz=>zonedEmptyCells(iz).forEach(c=>cells.push([c[0],c[1],iz])));
   else cells=zonedEmptyCells(z).map(c=>[c[0],c[1],z]);
   if(!cells.length) return;
   const [i,j,cz]=cells[Math.floor(Math.random()*cells.length)];
-  const val=kind==='res'?RES_TYPES[cz].val[1]:(kind==='com'?COM_VAL[1]:IND_VAL[1]);
-  startBuilding(i,j,kind,1,{buildDays:kind==='res'?(cz==='R3'||cz==='MU'?52:36):36,
-    ceqaDays:ceqaDaysFor(kind,1,i,j,cz),assessed:val,zt:kind==='res'?cz:null});
+  const val=kind==='res'?RES_TYPES[cz].val[1]
+    :kind==='ind'?IND_TYPES[cz].val[1]:COM_VAL[1];
+  const bd=kind==='res'?(cz==='R3'||cz==='MU'?52:36)
+    :kind==='ind'?(cz==='IR'?58:cz==='IW'?44:36):36;
+  startBuilding(i,j,kind,1,{buildDays:bd,
+    ceqaDays:ceqaDaysFor(kind,1,i,j,cz),assessed:val,
+    zt:(kind==='res'||kind==='ind')?cz:null});
 }
 function upgradeBuilding(b){
-  const t=b.kind==='res'?zt(b):null;
-  const maxL=b.kind==='res'?RES_TYPES[t].maxL:(b.kind==='ind'?2:3);
+  const t=b.kind==='res'?zt(b):b.kind==='ind'?it(b):null;
+  const maxL=b.kind==='res'?RES_TYPES[t].maxL:b.kind==='ind'?IND_TYPES[t].maxL:3;
   if(b.level>=maxL) return;
   const i=b.i,j=b.j,kind=b.kind,nl=b.level+1;
   const lvMul=0.75+(b.lv||60)/200;
   demolishBuilding(b,false);
   grid[i][j].kind='zone';
-  const val=kind==='res'?RES_TYPES[t].val[nl]:(kind==='com'?COM_VAL[nl]:IND_VAL[nl]);
+  const val=kind==='res'?RES_TYPES[t].val[nl]
+    :kind==='ind'?IND_TYPES[t].val[nl]:COM_VAL[nl];
   startBuilding(i,j,kind,nl,{buildDays:20+nl*18,ceqaDays:ceqaDaysFor(kind,nl,i,j,t),
     assessed:Math.round(val*lvMul),zt:t});
 }
@@ -2537,10 +2650,17 @@ function serviceNear(i,j,kind,r){
     if(b.kind===kind&&b.state==='done'&&Math.abs(b.i-i)<=r&&Math.abs(b.j-j)<=r) return true;
   return false;
 }
-function indNear(i,j,r){
-  for(const b of allBuildings)
-    if(b.kind==='ind'&&b.state==='done'&&Math.abs(b.i-i)<=r&&Math.abs(b.j-j)<=r) return true;
-  return false;
+// How much the worst industrial neighbour drags land value down. R&D is a good
+// neighbour and scores zero; a distribution yard is the worst thing to live beside.
+function indNuisance(i,j,r){
+  let worst=0;
+  for(const b of allBuildings){
+    if(b.kind!=='ind'||b.state!=='done') continue;
+    if(Math.abs(b.i-i)>r||Math.abs(b.j-j)>r) continue;
+    const n=IND_TYPES[it(b)].nuisance;
+    if(n>worst) worst=n;
+  }
+  return worst;
 }
 function maxCongNear(i,j,r){
   let m=0;
@@ -2556,7 +2676,7 @@ function landValueAt(i,j){
   if(serviceNear(i,j,'police',12)) lv+=8;
   lv+=clamp(cellH(i,j)*1.1,0,12);
   if(MAP.hasOcean){ const c=cellCenter(i,j); const sx=c.x-MAP.shoreX(c.z); if(sx>8&&sx<70) lv+=18; }
-  if(indNear(i,j,3)) lv-=24;
+  lv-=indNuisance(i,j,3);
   lv+=transitCoverage(i,j)*38;      // transit-oriented land value
   lv-=maxCongNear(i,j,2)*22;
   lv-=S.crime*25;
@@ -2568,7 +2688,7 @@ function recount(){
     if(b.state!=='done') return;
     if(b.kind==='res'){ hc+=effResCap(b); cj+=resJobs(b); }
     else if(b.kind==='com') cj+=COM_JOBS[b.level];
-    else if(b.kind==='ind') ij+=IND_JOBS[b.level];
+    else if(b.kind==='ind') ij+=indJobsOf(b);
     else if(b.kind==='datacenter') ij+=DATACENTER.jobs;   // startlingly few, and that is the point
     assessed+=b.assessed;
   });
@@ -2638,7 +2758,7 @@ function computeTransit(){
     if(cov<=0) return;
     if(b.kind==='res') riders+=effResCap(b)*cov*0.55;
     else if(b.kind==='com') riders+=COM_JOBS[b.level]*cov*0.45;
-    else if(b.kind==='ind') riders+=IND_JOBS[b.level]*cov*0.28;
+    else if(b.kind==='ind') riders+=indJobsOf(b)*cov*0.28;
   });
   S.transitRiders=Math.round(riders);
   let opex=0,fares=0,cells=0,stops=0;
@@ -2676,7 +2796,7 @@ function computeLineRiders(){
         const w=T.weight*(1-d/(T.radius+1));
         if(b.kind==='res') r+=effResCap(b)*w*0.55;
         else if(b.kind==='com') r+=COM_JOBS[b.level]*w*0.45;
-        else if(b.kind==='ind') r+=IND_JOBS[b.level]*w*0.28;
+        else if(b.kind==='ind') r+=indJobsOf(b)*w*0.28;
       }
     });
     L.riders=Math.round(r);
@@ -2803,18 +2923,24 @@ function computeUtilities(){
   // Load split into an average day and the evening peak. Homes ramp hard at 7pm
   // when everyone gets in and the AC is still running; industry is a day shift;
   // a data center does not care what time it is.
-  let base=0,peak=0,dc=0;
+  let base=0,peak=0,dc=0,indWater=0;
   allBuildings.forEach(b=>{ if(b.state!=='done') return;
     if(n[b.kind]!==undefined) n[b.kind]++;
     if(b.kind==='datacenter'){ dc++; base+=DATACENTER.power; peak+=DATACENTER.power; }
-    else if(['res','com','ind'].includes(b.kind)){
+    else if(b.kind==='ind'){
+      // industry runs a day shift, so it barely adds to the evening peak
+      const T=IND_TYPES[it(b)];
+      const p=T.power[b.level]||0;
+      base+=p; peak+=p*0.72;
+      indWater+=T.water[b.level]||0;
+    }
+    else if(['res','com'].includes(b.kind)){
       const l=b.level*2;
       if(b.kind==='res'){ base+=l*0.85; peak+=l*1.55; }
-      else if(b.kind==='com'){ base+=l*1.10; peak+=l*1.15; }
-      else { base+=l*1.25; peak+=l*0.95; }
+      else { base+=l*1.10; peak+=l*1.15; }
     }
   });
-  S.plants=n; S.dataCenters=dc;
+  S.plants=n; S.dataCenters=dc; S.indWaterRaw=indWater;
   const dry=S.drought?1:0;
   // ---- generation ----
   const gen={
@@ -2870,8 +2996,12 @@ function computeUtilities(){
   // Data centres are cooled with water, and a lawn-watering ordinance does not
   // touch them — but purple-pipe reuse does, which is how they are really cooled.
   S.dcWater=Math.round(dc*DATACENTER.water*recycleCut);
-  S.waterUse=Math.round((S.pop*1.0+(S.comJobs+S.indJobs)*0.4)
-    *(S.policies.conserve?0.8:1)*(S.heatwave?1.25:1)*recycleCut)+S.dcWater;
+  // Industrial water is metered per designation rather than per job — a packing
+  // house and an R&D campus employ similar numbers and use nothing like the same
+  // water. A lawn-watering ordinance does not touch either, but reuse does.
+  S.indWater=Math.round(indWater*recycleCut);
+  S.waterUse=Math.round((S.pop*1.0+S.comJobs*0.4)
+    *(S.policies.conserve?0.8:1)*(S.heatwave?1.25:1)*recycleCut)+S.dcWater+S.indWater;
   // ---- storage ----
   // Supply is a step function but demand creeps up every single day, and the
   // reservoir drawdown pulls well and intake yield down all summer. Without a
@@ -2951,7 +3081,9 @@ function computeTraffic(){
   const local={};
   allBuildings.forEach(b=>{
     if(b.state!=='done'||!['res','com','ind'].includes(b.kind)) return;
-    let trips=b.kind==='res'?(RES_TYPES[zt(b)].trips[b.level]||2.2):b.level*3.0;
+    let trips=b.kind==='res'?(RES_TYPES[zt(b)].trips[b.level]||2.2)
+      :b.kind==='ind'?(IND_TYPES[it(b)].trips[b.level]||3.0)
+      :b.level*3.0;
     trips*=(1-transitCoverage(b.i,b.j));      // riders are not driving
     const near=[];
     for(let dx=-1;dx<=1;dx++) for(let dz=-1;dz<=1;dz++){
@@ -3070,8 +3202,9 @@ function dailyTick(){
   if(!S.waterOK||!S.powerOK){ S.dR=Math.min(S.dR,-0.2); S.dC=Math.min(S.dC,0); S.dI=Math.min(S.dI,0); }
   if(S.waterOK&&S.powerOK){
     // more vacant platted lots = more builders working at once
-    let vacant=zonedEmptyCells('C',true).length+zonedEmptyCells('I',true).length;
-    RES_ZONES.forEach(z=>vacant+=zonedEmptyCells(z,true).length);
+    let vacant=zonedEmptyCells('C').length;
+    RES_ZONES.forEach(z=>vacant+=zonedEmptyCells(z).length);
+    IND_ZONES.forEach(z=>vacant+=zonedEmptyCells(z).length);
     const crews=clamp(Math.ceil(vacant/25),1,4);
     for(let k=0;k<crews;k++){
       if(S.dR>0.08&&Math.random()<S.dR*0.9) tryDevelop('R','res');
@@ -3208,7 +3341,9 @@ function monthlyTick(){
     const d={res:S.dR,com:S.dC,ind:S.dI}[b.kind];
     if(d<0.15) return;
     const nl=b.level+1;
-    const lvNeed=b.kind==='res'?(RES_TYPES[zt(b)].lvNeed[nl]??999):[0,0,52,72][Math.min(nl,3)];
+    const lvNeed=b.kind==='res'?(RES_TYPES[zt(b)].lvNeed[nl]??999)
+      :b.kind==='ind'?(IND_TYPES[it(b)].lvNeed[nl]??999)
+      :[0,0,52,72][Math.min(nl,3)];
     if((b.lv||0)<lvNeed) return;
     let score=0.22+d*0.35+(b.lv-50)/250;
     if(Math.random()<score*0.09) upgradeBuilding(b);
@@ -3630,6 +3765,7 @@ function loadGame(data){
     (data.lines||[]).forEach(L=>{ L.s=(L.s||[]).map(([i,j])=>[i+off,j+off]); });
   }
   const upZ=z=>z==='R'?'R1':z;   // older saves only had one residential designation
+  const upI=z=>IND_TYPES[z]?z:'IL';   // ...and only one industrial one
   startGame(data.map,true);
   Object.assign(S,data.S);
   S.policies=Object.assign(S.policies,data.policies||{});
@@ -3643,7 +3779,9 @@ function loadGame(data){
   (data.cells||[]).forEach(e=>{
     if(!e.b) return;
     const b=startBuilding(e.i,e.j,e.b.k,e.b.l,{buildDays:36,ceqaDays:e.b.st==='ceqa'?Math.max(1,Math.round(e.b.cl||30)):0,
-      assessed:e.b.as||0,zt:e.b.k==='res'?upZ(e.b.zt||(e.z?e.z:'R1')):null});
+      assessed:e.b.as||0,
+      zt:e.b.k==='res'?upZ(e.b.zt||(e.z?e.z:'R1'))
+        :e.b.k==='ind'?upI(e.b.zt||e.z):null});
     b.lv=e.b.lv||60;
     if(e.b.st==='done') finishBuilding(b);
     else if(e.b.st==='build'){ b.state='build'; b.prog=e.b.pr||0; if(b.sign){ cityG.remove(b.sign); b.sign=null; } }
