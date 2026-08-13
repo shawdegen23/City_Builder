@@ -1261,10 +1261,22 @@ function makeWater(kind){
     g.add(box(1.0,1.1,1.0,M.ind,1.45,0.06,0));              // turnout structure
     g.add(cyl(0.18,0.18,0.9,M.indDark,1.45,1.16,0,6));
   }
+  else if(kind==='transfer'){
+    // a metered interconnection — the pipe visibly runs off the pad both ways,
+    // reading as a tie-in to a network rather than a source of its own
+    g.add(box(3.9,0.1,3.9,M.concrete));
+    g.add(box(1.5,0.9,1.1,M.ind,0,0.06,0));                 // valve/meter house
+    g.add(box(1.6,0.16,1.2,M.indDark,0,0.98,0));
+    const pipe=new THREE.Mesh(new THREE.CylinderGeometry(0.24,0.24,4.6,10),M.indDark);
+    pipe.rotation.z=Math.PI/2; pipe.position.set(0,0.4,0.8); pipe.castShadow=true; g.add(pipe);
+    for(const x of [-2.3,2.3]) g.add(cyl(0.13,0.13,0.7,M.white,x,0.05,0.8,8));   // valve stands where it exits
+    g.add(box(0.7,0.6,0.7,M.white,1.3,0.06,-1.1));          // meter pit
+    g.add(cyl(0.05,0.05,0.9,M.indDark,1.3,0.66,-1.1,6));
+  }
   return g;
 }
 const ENERGY_KINDS=['solar','wind','gas','hydro','geo','battery','smr','nuclear'];
-const WATER_KINDS=['well','intake','aqueduct','desal','recycle','cistern','bank'];
+const WATER_KINDS=['well','intake','aqueduct','desal','recycle','cistern','bank','transfer'];
 function animateUtilities(dt,t){
   spinners.forEach(r=>{ r.rotation.z+=dt*1.35; });
   plumeSprites.forEach(p=>{
@@ -2174,7 +2186,7 @@ const IND_ZONES=['IL','IW','IA','IR'];
 function it(b){ return b.zt&&IND_TYPES[b.zt]?b.zt:'IL'; }
 function indJobsOf(b){ return IND_TYPES[it(b)].jobs[b.level]||0; }
 const CIVIC_OPEX={fire:1300,police:1200,school:1900,park:250,cityhall:2200,
-  well:320,intake:420,aqueduct:1500,desal:3800,recycle:900,cistern:240,bank:620,
+  well:320,intake:420,aqueduct:1500,desal:3800,recycle:900,cistern:240,bank:620,transfer:480,
   solar:260,wind:300,gas:1450,hydro:700,geo:820,battery:340,datacenter:2600,
   smr:2600,nuclear:9200};
 // Generation. clean=counts toward SB 100. Output is modified by map and conditions.
@@ -2223,6 +2235,12 @@ const WATERSRC={
     note:'A covered tank on the edge of town. It fills from whatever your sources leave over and gives it back when a heat wave or a dry summer pushes demand above supply.'},
   bank:{name:'Recharge Basin',ico:'💦',out:0,cost:240000,store:6000,fill:340,
     note:'Spreading grounds that sink wet-year surplus back into the aquifer and pull it out in a dry one. Groundwater banking is how California actually stores water — and unlike a well, what you put in is yours to take back.'},
+  // The one source that does not depend on local geology at all, which is the
+  // point: it is what a city with no coast and no State Water Project turnout
+  // still has left. It costs nothing extra to build cheaply, but the water
+  // itself is metered at market price — and that price is the real lever.
+  transfer:{name:'Water Transfer Contract',ico:'🤝',out:260,cost:140000,priced:true,
+    note:'An interagency transfer, wheeled through your existing pipes under a purchase contract — California\'s water code lets any agency buy from one with water to spare, wherever it is. It works regardless of your local geology, and it is barely touched by a local drought. What it is not immune to is the price: in a dry year every other city is buying too, and the market clears a lot higher.'},
 };
 // Small cities contract with the county for public safety (the "Lakewood Plan")
 // and only stand up their own departments as they grow.
@@ -2271,6 +2289,7 @@ const TOOLS=[
   {id:'recycle',ico:'♻️',name:'Recycling',cost:130000,cat:'water'},
   {id:'cistern',ico:'🛢️',name:'Storage Tank',cost:60000,cat:'water'},
   {id:'bank',ico:'💦',name:'Recharge Basin',cost:240000,cat:'water'},
+  {id:'transfer',ico:'🤝',name:'Water Transfer',cost:140000,cat:'water'},
 
   {id:'solar',ico:'☀️',name:'Solar',cost:40000,cat:'power'},
   {id:'wind',ico:'🌬️',name:'Wind',cost:55000,cat:'power'},
@@ -3031,10 +3050,11 @@ function showTip(p,mx,my){
       if(b.kind==='commuter') html+='Regional job access: +220<br>';
       if(b.kind==='hsr') html+='Regional job access: +900<br>';
       if(WATERSRC[b.kind]){ const w=WATERSRC[b.kind];
-        html+=w.out?`Yield: ${fmtN(w.out)} af${S.drought?' (cut by drought)':''}<br>`
+        html+=w.out?`Yield: ${fmtN(w.out)} af${S.drought&&!w.priced?' (cut by drought)':''}<br>`
           :w.store?`Storage: ${fmtN(w.store)} af · banks up to ${fmtN(w.fill)} af/day<br>`
           :'Cuts citywide demand 22%<br>';
-        if(w.power) html+=`Draws ${w.power} MW<br>`; }
+        if(w.power) html+=`Draws ${w.power} MW<br>`;
+        if(w.priced) html+=`Price: $${S.drought?95:18}/af${S.drought?' <span style="color:#ff8a7a">(drought market)</span>':' · market rate'}<br>`; }
       if(b.kind==='com') html+=`Jobs: ${COM_JOBS[b.level]}<br>`;
       if(b.kind==='ind'){ const T=IND_TYPES[it(b)];
         html+=`Jobs: ${T.jobs[b.level]||0}<br>`;
@@ -3572,9 +3592,10 @@ function computeUtilities(){
     intake:n.intake*WATERSRC.intake.out*(dry?0.35:1)*(0.45+S.reservoir*0.55),
     aqueduct:n.aqueduct*WATERSRC.aqueduct.out*(dry?0.55:1),
     desal:S.powerOK?n.desal*WATERSRC.desal.out:0,     // no power, no reverse osmosis
+    transfer:n.transfer*WATERSRC.transfer.out*(dry?0.8:1),   // the market thins, but does not vanish
   };
   S.water=water;
-  S.waterCap=Math.round(water.well+water.intake+water.aqueduct+water.desal);
+  S.waterCap=Math.round(water.well+water.intake+water.aqueduct+water.desal+water.transfer);
   const recycleCut=1-Math.min(0.5,n.recycle*WATERSRC.recycle.demand);
   // Metered by sector. Conservation ordinances and heat waves move households and
   // storefronts; they do not touch a packing house or a chiller plant. Purple-pipe
@@ -3936,6 +3957,14 @@ function monthlyTick(){
       if(S.month%6===0) advise(`⚡ Your grid is only <b>${Math.round(S.cleanPct*100)}% clean</b> against an SB 100 target of ${Math.round(tgt*100)}%. The CPUC has assessed ${fmt$(fine)} in penalties. Retire the gas peakers or add renewables and storage.`,'warn');
     } else S.budget.sb100=0;
   }
+  // Water transfer contracts meter at market price rather than a flat operating
+  // fee — cheap most years, and the one place in the budget that spikes on
+  // purpose when a drought hits, because that is what the real water market does.
+  if(S.plants.transfer){
+    const pricePerAf=S.drought?95:18;
+    const surge=Math.round(S.water.transfer*pricePerAf);
+    S.money-=surge; S.budget.waterTransfer=surge; S.budget.waterTransferPrice=pricePerAf;
+  } else S.budget.waterTransfer=0;
   const hsrBuilding=transitLines.find(L=>L.mode==='hsr'&&L.state==='build');
   if(hsrBuilding&&Math.random()<0.22){
     const over=Math.round(400000+Math.random()*1600000);
@@ -4209,7 +4238,7 @@ function renderPanel(){
     const segs=[['solar','#e6b84c',gen.solar],['wind','#7fd4e0',gen.wind],['hydro','#4b9fe0',gen.hydro],
                 ['geo','#c86a4a',gen.geo],['nuclear','#d05f5f',gen.nuclear],
                 ['storage','#8fd97a',S.genFirm],['gas','#8a8f96',gen.gas]];
-    const wsegs=[['wells','#4b9fe0',w.well],['river','#5fc0a0',w.intake],['aqueduct','#9a7fd0',w.aqueduct],['desal','#e0a44f',w.desal]];
+    const wsegs=[['wells','#4b9fe0',w.well],['river','#5fc0a0',w.intake],['aqueduct','#9a7fd0',w.aqueduct],['desal','#e0a44f',w.desal],['transfers','#e06f9f',w.transfer]];
     const wTotal=Math.max(1,S.waterCap);
     const mixRows=(mix,unit)=>{
       const tot=Math.max(1,Object.values(mix).reduce((a,b2)=>a+b2,0));
@@ -4262,7 +4291,9 @@ function renderPanel(){
       <div class="uRow"><span>${MAP.basin}</span><b class="${S.gwOverdraft?'neg':''}" style="color:${S.gwOverdraft?'#ff8a7a':'#f0e6d2'}">${fmtN(S.gwRequested)} / ${fmtN(S.gwCap)} af</b></div>
       ${S.gwOverdraft?`<div class="lawNote"><b>Overdraft:</b> your wells can pull more than the basin sustainably yields. Under SGMA the surplus is capped and simply lost — build surface, imported or recycled supply instead.</div>`:''}
       <div class="lawNote"><b>SGMA (2014):</b> the Sustainable Groundwater Management Act ended unlimited pumping in California. Every basin has a sustainable yield, and drought cuts it further. Wells alone will not carry a growing city.</div>
-      <div class="lawNote"><b>Available here:</b> ${[MAP.intake?'river intake':null,MAP.aqueduct?'State Water Project turnout':null,MAP.desal?'coastal desalination':null,'groundwater','recycling'].filter(Boolean).join(' · ')}<br>
+      ${S.plants.transfer?`<div class="uRow"><span>Water transfer contracts</span><b style="color:${S.drought?'#ff8a7a':'#f0e6d2'}">${fmtN(Math.round(S.water.transfer))} af${S.budget.waterTransfer?` · ${fmt$(S.budget.waterTransfer)}/mo at $${S.budget.waterTransferPrice||18}/af`:''}</b></div>
+      <div class="lawNote">${S.drought?'<b>Drought pricing is in effect.</b> Every other agency is buying too, and the market has cleared a lot higher.':'The market is calm this year — transfers are cheap while it lasts.'}</div>`:''}
+      <div class="lawNote"><b>Available here:</b> ${[MAP.intake?'river intake':null,MAP.aqueduct?'State Water Project turnout':null,MAP.desal?'coastal desalination':null,'groundwater','recycling','water transfer contract (any map)'].filter(Boolean).join(' · ')}<br>
       <b>Generation:</b> ${['solar ×'+MAP.solarMul.toFixed(2),'wind ×'+MAP.windMul.toFixed(2),MAP.hydro?'hydro':null,MAP.geo?'geothermal':null,'gas'].filter(Boolean).join(' · ')}</div>`;
   } else if(openPanel==='transit'){
     T.textContent='🚌 Transit';
