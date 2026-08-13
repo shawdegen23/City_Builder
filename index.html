@@ -1923,6 +1923,10 @@ const ENERGY={
 // A data center is an economic-development deal, not a land use that shows up on
 // its own: enormous assessed value, enormous around-the-clock load, real cooling
 // water, and startlingly few permanent jobs.
+// A data center costs you politically at the hearings and again on opening day,
+// and then it stops — the approval smoothing pulls the city back to trend over
+// the following months. A small town feels the fight far more than a large one.
+function dcShock(base){ return clamp(base-S.pop/500,base*0.3,base); }
 const DATACENTER={name:'Data Center',ico:'🖥️',cost:250000,assessed:68000000,
   power:380,water:320,jobs:30,daFee:900000,ceqa:180,buildDays:95,
   note:'A hyperscale campus. The assessed value is enormous, and under Prop 13 that is the rare property-tax base a California city can actually win. It also draws 380 MW around the clock — it does not sleep when your solar does — plus 320 af of cooling water, and it employs about thirty people.'};
@@ -2174,6 +2178,7 @@ function applyTool(i,j,isClick){
     if(t==='datacenter'){
       // the community-benefit payment in the development agreement, up front
       S.money+=DATACENTER.daFee; S.monthImpactFees+=DATACENTER.daFee;
+      S.approval=Math.max(4,S.approval-dcShock(9));   // the hearings, not a standing grudge
       advise(`🖥️ <b>Data center entering review.</b> The development agreement brings ${fmt$(DATACENTER.daFee)} up front, and once it is assessed it will be the largest single line on your property-tax roll. Line up <b>${DATACENTER.power} MW</b> of firm capacity before it opens, or it will black out the rest of your city.`,'warn');
     }
     const src=ENERGY[t]||WATERSRC[t]||(t==='datacenter'?DATACENTER:null);
@@ -2930,21 +2935,25 @@ function computeUtilities(){
   // Load split into an average day and the evening peak. Homes ramp hard at 7pm
   // when everyone gets in and the AC is still running; industry is a day shift;
   // a data center does not care what time it is.
-  let base=0,peak=0,dc=0,indWater=0;
+  // Accumulate per sector, so the panel can say where the load actually goes
+  // instead of only showing one total the player has to take on faith.
+  let dc=0,indWater=0;
+  const pm={homes:0,com:0,ind:0,data:0,desal:0};   // average load, MW
+  const pk={homes:0,com:0,ind:0,data:0,desal:0};   // evening peak, MW
   allBuildings.forEach(b=>{ if(b.state!=='done') return;
     if(n[b.kind]!==undefined) n[b.kind]++;
-    if(b.kind==='datacenter'){ dc++; base+=DATACENTER.power; peak+=DATACENTER.power; }
+    if(b.kind==='datacenter'){ dc++; pm.data+=DATACENTER.power; pk.data+=DATACENTER.power; }
     else if(b.kind==='ind'){
       // industry runs a day shift, so it barely adds to the evening peak
       const T=IND_TYPES[it(b)];
       const p=T.power[b.level]||0;
-      base+=p; peak+=p*0.72;
+      pm.ind+=p; pk.ind+=p*0.72;
       indWater+=T.water[b.level]||0;
     }
     else if(['res','com'].includes(b.kind)){
       const l=b.level*2;
-      if(b.kind==='res'){ base+=l*0.85; peak+=l*1.55; }
-      else { base+=l*1.10; peak+=l*1.15; }
+      if(b.kind==='res'){ pm.homes+=l*0.85; pk.homes+=l*1.55; }
+      else { pm.com+=l*1.10; pk.com+=l*1.15; }
     }
   });
   S.plants=n; S.dataCenters=dc; S.indWaterRaw=indWater;
@@ -2959,10 +2968,16 @@ function computeUtilities(){
   };
   S.gen=gen;
   const desalDraw=n.desal*WATERSRC.desal.power;
-  base+=S.pop*0.20+desalDraw;
-  peak+=S.pop*0.30+desalDraw;
-  S.powerUse=Math.round(base);
-  S.powerPeak=Math.round(peak);
+  pm.homes+=S.pop*0.20; pk.homes+=S.pop*0.30;      // household load beyond the buildings themselves
+  pm.desal=desalDraw;   pk.desal=desalDraw;
+  for(const k in pm) pm[k]=Math.round(pm[k]);
+  for(const k in pk) pk[k]=Math.round(pk[k]);
+  S.powerMix=pm; S.peakMix=pk;
+  let base=0,peak=0;
+  for(const k in pm) base+=pm[k];
+  for(const k in pk) peak+=pk[k];
+  S.powerUse=base;
+  S.powerPeak=peak;
   // Midday the sun carries everything. At the 7pm peak solar is gone — the duck
   // curve — and only firm generation plus whatever the batteries stored is left.
   const dayCap=gen.solar+gen.wind+gen.gas+gen.hydro+gen.geo;
@@ -3000,15 +3015,15 @@ function computeUtilities(){
   S.water=water;
   S.waterCap=Math.round(water.well+water.intake+water.aqueduct+water.desal);
   const recycleCut=1-Math.min(0.5,n.recycle*WATERSRC.recycle.demand);
-  // Data centres are cooled with water, and a lawn-watering ordinance does not
-  // touch them — but purple-pipe reuse does, which is how they are really cooled.
+  // Metered by sector. Conservation ordinances and heat waves move households and
+  // storefronts; they do not touch a packing house or a chiller plant. Purple-pipe
+  // reuse touches everything, which is exactly how these places are really cooled.
+  const wMul=(S.policies.conserve?0.8:1)*(S.heatwave?1.25:1)*recycleCut;
   S.dcWater=Math.round(dc*DATACENTER.water*recycleCut);
-  // Industrial water is metered per designation rather than per job — a packing
-  // house and an R&D campus employ similar numbers and use nothing like the same
-  // water. A lawn-watering ordinance does not touch either, but reuse does.
   S.indWater=Math.round(indWater*recycleCut);
-  S.waterUse=Math.round((S.pop*1.0+S.comJobs*0.4)
-    *(S.policies.conserve?0.8:1)*(S.heatwave?1.25:1)*recycleCut)+S.dcWater+S.indWater;
+  S.waterMix={homes:Math.round(S.pop*1.0*wMul), com:Math.round(S.comJobs*0.4*wMul),
+              ind:S.indWater, data:S.dcWater};
+  S.waterUse=0; for(const k in S.waterMix) S.waterUse+=S.waterMix[k];
   // ---- storage ----
   // Supply is a step function but demand creeps up every single day, and the
   // reservoir drawdown pulls well and intake yield down all summer. Without a
@@ -3181,6 +3196,9 @@ function dailyTick(){
         if(b.kind==='hsr'){ computeTransit();
           advise('🚄 <b>The high-speed rail station is open.</b> Years late and well over budget — and now your city is on the statewide network. Regional job access, land value and ridership all jump.');
           S.approval=Math.min(97,S.approval+12); }
+        if(b.kind==='datacenter'){
+          S.approval=Math.max(4,S.approval-dcShock(4));
+          advise(`🖥️ <b>The data center is online.</b> It is now the largest single line on your property-tax roll. Keep it supplied and the politics settle down within the year — residents only turn on it if it starts taking the power or water everyone else needs.`); }
       }
     }
   });
@@ -3259,7 +3277,17 @@ function monthlyTick(){
   let a=58;
   a+=S.waterOK?4:-(7+22*clamp(S.waterStress*3,0,1));
   a+=S.powerOK?3:-(6+20*clamp(S.powerStress*3,0,1));
-  a-=(S.dataCenters||0)*0.8;                      // lots of load, very few jobs
+  // Data centers are fought over when they are proposed, not resented forever
+  // afterwards. Once one is open and adequately served it is a quiet building
+  // that pays a great deal of property tax, so it costs nothing here. Residents
+  // only turn on it when it is actually the reason the taps or the grid are
+  // short — and then in proportion to how much of the shortage it is causing.
+  S.dcBlame=0;
+  if(S.dataCenters>0){
+    if(!S.powerOK) S.dcBlame+=clamp(S.dataCenters*DATACENTER.power/Math.max(S.powerPeak,1),0,1)*14;
+    if(!S.waterOK) S.dcBlame+=clamp((S.dcWater||0)/Math.max(S.waterUse,1),0,1)*14;
+  }
+  a-=S.dcBlame;
   a-=S.crime*32; a-=S.avgCong*16;
   a+=clamp(S.modeShare||0,0,0.6)*16;      // people like having a way to get around
   a+=clamp(parks/(S.pop/220+1),0,1)*8;
@@ -3277,7 +3305,7 @@ function monthlyTick(){
       ?`water — supply is ${Math.round(S.waterStress*100)}% short of demand`
       :'water pressure at the summer peak');
     if(!S.powerOK) gripes.push('blackouts in the evening peak');
-    if(S.dataCenters>0&&S.pop<S.dataCenters*450) gripes.push('the data centers — all that power and water, and barely any jobs');
+    if(S.dcBlame>3) gripes.push(`the data centers — they are taking ${!S.powerOK?'the power':'the water'} everyone else needs`);
     if(S.crime>0.22) gripes.push('crime — you need police coverage across the whole city');
     if(S.avgCong>0.55) gripes.push('traffic — upgrade the busy corridors to avenues');
     if(S.disasterHeat>0.6) gripes.push('the disaster response');
@@ -3605,13 +3633,27 @@ function renderPanel(){
                 ['geo','#c86a4a',gen.geo],['storage','#8fd97a',S.genFirm],['gas','#8a8f96',gen.gas]];
     const wsegs=[['wells','#4b9fe0',w.well],['river','#5fc0a0',w.intake],['aqueduct','#9a7fd0',w.aqueduct],['desal','#e0a44f',w.desal]];
     const wTotal=Math.max(1,S.waterCap);
+    const mixRows=(mix,unit)=>{
+      const tot=Math.max(1,Object.values(mix).reduce((a,b2)=>a+b2,0));
+      const parts=Object.keys(mix).filter(k=>mix[k]>0);
+      if(!parts.length) return '<div class="uRow"><span style="color:#8892a5">Nothing drawing yet</span><b></b></div>';
+      return `<div class="uBar">${parts.map(k=>`<i style="width:${mix[k]/tot*100}%;background:${DEMAND_COL[k]}"></i>`).join('')}</div>`
+        +parts.sort((a,b2)=>mix[b2]-mix[a]).map(k=>
+          `<div class="uRow"><span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${DEMAND_COL[k]};margin-right:6px"></i>${DEMAND_LBL[k]}</span>`
+          +`<b>${fmtN(mix[k])} ${unit} <span style="color:#8892a5">· ${Math.round(mix[k]/tot*100)}%</span></b></div>`).join('');
+    };
     B.innerHTML=`
       <div class="mapSect">Electricity</div>
       <div class="uRow"><span>Nameplate capacity</span><b>${fmtN(S.powerCap)} MW</b></div>
       <div class="uBar">${segs.map(([,c,v])=>v>0?`<i style="width:${v/genTotal*100}%;background:${c}"></i>`:'').join('')}</div>
       <div class="uLegend">${segs.filter(x=>x[2]>0).map(([l,c])=>`<span><i style="background:${c}"></i>${l}</span>`).join('')}</div>
-      <div class="uRow"><span>Average load${n.desal?' (incl. desalination)':''}</span><b>${fmtN(S.powerUse)} MW</b></div>
-      <div class="uRow"><span>Evening peak (7pm)</span><b>${fmtN(S.powerPeak)} MW</b></div>
+      <div class="uRow"><span>Average load</span><b>${fmtN(S.powerUse)} MW</b></div>
+      <div class="mapSect" style="margin-top:6px">Where the average load goes</div>
+      ${mixRows(S.powerMix||{},'MW')}
+      <div class="uRow" style="margin-top:6px"><span>Evening peak (7pm)</span><b>${fmtN(S.powerPeak)} MW</b></div>
+      <div class="uLegend" style="margin:-2px 0 4px">${Object.keys(S.peakMix||{}).filter(k=>S.peakMix[k]>0)
+        .sort((a,b2)=>S.peakMix[b2]-S.peakMix[a]).map(k=>
+          `<span><i style="background:${DEMAND_COL[k]}"></i>${DEMAND_LBL[k]} ${fmtN(S.peakMix[k])}</span>`).join('')}</div>
       <div class="uRow"><span>Available at the peak</span><b class="${S.powerOK?'':'neg'}">${fmtN(S.peakCap)} MW</b></div>
       ${S.batteryOut>0?`<div class="uRow"><span>&nbsp;&nbsp;↳ from batteries</span><b class="pos">+${fmtN(S.batteryOut)} MW</b></div>`:''}
       <div class="uRow"><span>Reserve margin</span><b style="color:${S.reserve>=0.15?'#8fd97a':S.reserve>=0?'#e0cf7a':'#ff8a7a'}">${S.powerPeak>0?Math.round(S.reserve*100)+'%':'—'}</b></div>
@@ -3625,9 +3667,11 @@ function renderPanel(){
 
       <div class="mapSect">Water</div>
       <div class="uRow"><span>Supply</span><b class="${S.waterOK?'':'neg'}">${fmtN(S.waterCap)} af${S.waterDraw>0?` <span style="color:#5ec8b0">+${fmtN(S.waterDraw)} banked</span>`:''}</b></div>
-      <div class="uRow"><span>Demand</span><b>${fmtN(S.waterUse)} af${n.recycle?' (recycling applied)':''}</b></div>
       <div class="uBar">${wsegs.map(([,c,v])=>v>0?`<i style="width:${v/wTotal*100}%;background:${c}"></i>`:'').join('')}</div>
       <div class="uLegend">${wsegs.filter(x=>x[2]>0).map(([l,c])=>`<span><i style="background:${c}"></i>${l}</span>`).join('')}</div>
+      <div class="uRow"><span>Demand</span><b>${fmtN(S.waterUse)} af${n.recycle?' (recycling applied)':''}</b></div>
+      <div class="mapSect" style="margin-top:6px">Where the water goes</div>
+      ${mixRows(S.waterMix||{},'af')}
       ${S.waterStoreCap>0?`
       <div class="uRow"><span>Banked storage</span><b style="color:${S.waterStore>S.waterStoreCap*0.3?'#8fd97a':S.waterStore>S.waterStoreCap*0.12?'#e0cf7a':'#ff8a7a'}">${fmtN(S.waterStore)} / ${fmtN(S.waterStoreCap)} af</b></div>
       <div class="uBar"><i style="width:${clamp(S.waterStore/S.waterStoreCap*100,0,100)}%;background:#5ec8b0"></i></div>
@@ -3692,6 +3736,17 @@ function renderPanel(){
   }
 }
 
+// Where demand actually goes. Shared by the Grid panel and the HUD hover text,
+// because a bare "16,776 / 34,500" tells the player nothing about what to cut.
+const DEMAND_COL={homes:'#6fc46f',com:'#4b9fe0',ind:'#e0a44f',data:'#c76fd0',desal:'#7fd4e0'};
+const DEMAND_LBL={homes:'homes',com:'shops',ind:'industry',data:'data centers',desal:'desalination'};
+function mixTip(mix,unit){
+  const keys=Object.keys(mix||{}).filter(k=>mix[k]>0).sort((a,b)=>mix[b]-mix[a]);
+  if(!keys.length) return '  nothing drawing yet';
+  const tot=keys.reduce((a,k)=>a+mix[k],0);
+  return keys.map(k=>`  ${DEMAND_LBL[k]}: ${fmtN(mix[k])} ${unit} (${Math.round(mix[k]/tot*100)}%)`).join('\n');
+}
+
 // ---------- HUD ----------
 function refreshHUD(){
   document.getElementById('sMoney').textContent=fmt$(S.money);
@@ -3705,9 +3760,23 @@ function refreshHUD(){
   const w=document.getElementById('sWater');
   w.textContent=fmtN(S.waterUse)+'/'+fmtN(S.waterCap);
   w.className='val '+(S.waterOK?'good':'bad');
+  w.title=`Water — demand ${fmtN(S.waterUse)} af of ${fmtN(S.waterCap)} af supplied\n`
+    +mixTip(S.waterMix,'af')
+    +(S.waterStoreCap>0?`\n\nBanked: ${fmtN(Math.round(S.waterStore))} / ${fmtN(S.waterStoreCap)} af`
+      +((S.waterFlow||0)<0?`\nDrawing ${fmtN(Math.abs(S.waterFlow))} af/day from storage`:''):'')
+    +(S.heatwave?'\n\nHeat wave: household and retail demand +25% this month':'');
   const pw=document.getElementById('sPower');
-  pw.textContent=fmtN(S.powerUse)+'/'+fmtN(S.powerCap);
+  // The evening peak is what decides whether the lights stay on, so show that
+  // rather than average load against nameplate, which can look comfortable while
+  // a solar-heavy grid is minutes from a blackout.
+  pw.textContent=fmtN(S.powerPeak)+'/'+fmtN(S.peakCap);
   pw.className='val '+(S.powerOK?'good':'bad');
+  pw.title=`Power at the 7pm peak — ${fmtN(S.powerPeak)} MW needed, ${fmtN(S.peakCap)} MW available\n`
+    +mixTip(S.peakMix,'MW')
+    +`\n\nAverage load: ${fmtN(S.powerUse)} MW`
+    +`\nNameplate capacity: ${fmtN(S.powerCap)} MW`
+    +(S.batteryOut>0?`\nBatteries supplying ${fmtN(S.batteryOut)} MW into the ramp`:'')
+    +`\nReserve margin: ${S.powerPeak>0?Math.round(S.reserve*100)+'%':'—'}`;
   document.querySelector('#dR i').style.height=Math.round(clamp(S.dR,0,1)*100)+'%';
   document.querySelector('#dC i').style.height=Math.round(clamp(S.dC,0,1)*100)+'%';
   document.querySelector('#dI i').style.height=Math.round(clamp(S.dI,0,1)*100)+'%';
