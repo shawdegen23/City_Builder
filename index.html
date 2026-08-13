@@ -787,7 +787,38 @@ function cyl(r1,r2,h,mat,x=0,y=0,z=0,seg=8){ const m=new THREE.Mesh(new THREE.Cy
 
 // ---------- building factories (variant vh in [0,1)) ----------
 // ---- housing by California zoning designation ----
+// R-4: a residential tower on a retail podium. Three silhouettes so a downtown
+// does not read as one building stamped repeatedly.
+function makeTower(level,vh){
+  const g=new THREE.Group();
+  const h=[0,11,17,24][level]||11;
+  const v=Math.floor(vh*3);
+  const skin=v===0?M.apt:v===1?M.office:M.apt2;
+  g.add(box(3.7,1.5,3.6,M.shop));                     // ground-floor retail podium
+  g.add(box(3.8,0.22,3.7,M.concrete,0,1.5,0));
+  for(let k=-1;k<=1;k+=2) g.add(box(1.5,0.24,0.35,M.awning[Math.floor(vh*11)%5],k*0.9,1.15,1.85));
+  if(v===0){                                          // single slab, setback crown
+    g.add(box(2.9,h,2.8,skin,0,1.72,0));
+    g.add(box(2.4,1.4,2.3,skin,0,h+1.72,0));
+    g.add(box(2.5,0.22,2.4,M.indDark,0,h+3.12,0));
+  } else if(v===1){                                   // twin shafts joined by a link
+    g.add(box(1.5,h,2.7,skin,-0.95,1.72,0));
+    g.add(box(1.5,h*0.82,2.7,skin,0.95,1.72,0));
+    g.add(box(0.6,h*0.5,1.6,M.glassBlue,0,1.72+h*0.2,0));
+    g.add(box(1.6,0.2,2.8,M.indDark,-0.95,h+1.72,0));
+    g.add(box(1.6,0.2,2.8,M.indDark,0.95,h*0.82+1.72,0));
+  } else {                                            // stepped, terraces on the setbacks
+    g.add(box(3.2,h*0.5,3.1,skin,0,1.72,0));
+    g.add(box(2.5,h*0.34,2.4,skin,-0.2,1.72+h*0.5,0.1));
+    g.add(box(1.8,h*0.3,1.8,skin,0.2,1.72+h*0.84,-0.1));
+    g.add(box(1.9,0.2,1.9,M.indDark,0.2,1.72+h*1.14,-0.1));
+    g.add(box(2.6,0.12,2.5,M.parkGrass,-0.2,1.72+h*0.5,0.1));
+  }
+  g.add(cyl(0.09,0.09,1.5,M.indDark,0.6,1.72+h+(v===0?1.6:0.3),0,5));   // mast
+  return g;
+}
 function makeRes(zt,level,vh){
+  if(zt==='R4') return makeTower(level,vh);
   const g=new THREE.Group();
   const wall=M.stucco[Math.floor(vh*6)%6], roof=M.roof[Math.floor(vh*13)%4];
   if(zt==='R1'){
@@ -889,12 +920,34 @@ function makeCom(level,vh){
     const v=Math.floor(vh*2);
     if(v===0){ g.add(box(3.1,3.8,3.0,M.shop)); g.add(box(2.2,0.7,0.25,aw,0,3.85,1.5)); }
     else { g.add(box(3.2,2.2,3.0,M.shop)); g.add(box(2.4,1.8,2.2,M.office,0.2,2.2,-0.3)); g.add(box(3.3,0.3,0.5,aw,0,2.2,1.45)); }
-  } else {
+  } else if(level===3){
     const v=Math.floor(vh*2);
     if(v===0){ g.add(box(3.2,9.5,3.1,M.office)); g.add(box(3.35,0.3,3.25,M.indDark,0,9.5,0)); g.add(box(0.9,0.9,0.9,M.indDark,-0.7,9.75,-0.6)); }
     else { // terraced glass
       g.add(box(3.3,3.4,3.2,M.office2)); g.add(box(2.7,3.2,2.6,M.office2,0.2,3.4,-0.2)); g.add(box(2.0,3.0,2.0,M.office2,-0.3,6.6,0.2));
       g.add(box(2.1,0.2,2.1,M.glassBlue,-0.3,9.6,0.2));
+    }
+  } else {
+    // Level 4: a downtown office tower. Glass shaft, plaza at the base, and a
+    // crown so the skyline has something to end on.
+    const v=Math.floor(vh*2);
+    const h=v===0?21:18;
+    g.add(box(3.8,0.16,3.8,M.concrete));
+    g.add(box(1.5,0.1,1.4,M.parkGrass,1.05,0.16,1.15));           // plaza planting
+    g.add(box(3.3,2.0,3.2,M.office,0,0.16,-0.15));                // lobby
+    g.add(box(3.4,0.2,3.3,M.indDark,0,2.16,-0.15));
+    if(v===0){
+      g.add(box(2.6,h,2.5,M.glassBlue,0,2.36,-0.15));
+      g.add(box(2.75,0.24,2.65,M.office2,0,2.36+h*0.52,-0.15));    // banding
+      g.add(box(2.0,2.4,1.9,M.office2,0,2.36+h,-0.15));
+      g.add(box(2.1,0.22,2.0,M.indDark,0,4.76+h,-0.15));
+      g.add(cyl(0.1,0.1,3.0,M.indDark,0,4.98+h,-0.15,5));
+    } else {
+      g.add(box(2.8,h*0.62,2.7,M.office2,0,2.36,-0.15));
+      g.add(box(2.2,h*0.55,2.1,M.glassBlue,-0.25,2.36+h*0.62,-0.1));
+      g.add(box(2.3,0.22,2.2,M.indDark,-0.25,2.36+h*1.17,-0.1));
+      g.add(box(1.0,1.6,1.0,M.indDark,0.55,2.58+h*1.17,-0.1));
+      g.add(cyl(0.09,0.09,2.4,M.indDark,-0.25,2.58+h*1.17,-0.1,5));
     }
   }
   return g;
@@ -1281,7 +1334,7 @@ function cellTopY(i,j){
 function roadTopY(i,j){ const c=grid[i][j]; return c.deckY!=null?c.deckY:cellTopY(i,j)+0.26; }
 
 // zone overlays
-const zoneColors={R1:0x59c24b,R2:0x8cd44f,R3:0xe0d04a,MU:0xd06fd0,C:0x4b9fe0,
+const zoneColors={R1:0x59c24b,R2:0x8cd44f,R3:0xe0d04a,MU:0xd06fd0,R4:0xe89a3c,C:0x4b9fe0,
   IL:0xd8b44b,IW:0xb8823a,IA:0xc9a94e,IR:0x9a7fd0,I:0xd8b44b};
 const zoneGeo=new THREE.PlaneGeometry(CELL*0.92,CELL*0.92).rotateX(-Math.PI/2);
 const zoneMats={};
@@ -1871,12 +1924,19 @@ const RES_TYPES={
       cap:[0,26,44,74],val:[0,3400000,5900000,9800000],units:[0,8,14,24],jobs:[0,0,0,0],lvNeed:[0,0,58,76],trips:[0,6.2,9.0,13.5]},
   MU:{name:'Mixed-Use',ico:'🏙️',short:'MU',maxL:2,
       cap:[0,18,32],val:[0,3000000,5400000],units:[0,6,10],jobs:[0,8,16],lvNeed:[0,0,64],trips:[0,6.8,10.5]},
+  // Towers only pencil where the land is already worth something, which in this
+  // game means transit, parks, schools and low crime have done their work first.
+  R4:{name:'High-Rise Residential (R-4)',ico:'🏬',short:'R-4',maxL:3,minLV:72,
+      cap:[0,64,118,196],val:[0,13000000,24000000,41000000],units:[0,22,40,68],
+      jobs:[0,6,12,20],lvNeed:[0,0,86,102],trips:[0,13.5,22.0,35.0]},
 };
-const RES_ZONES=['R1','R2','R3','MU'];
-const ALL_ZONES=['R1','R2','R3','MU','C','IL','IW','IA','IR'];
+const RES_ZONES=['R1','R2','R3','MU','R4'];
+const ALL_ZONES=['R1','R2','R3','MU','R4','C','IL','IW','IA','IR'];
 function zt(b){ return b.zt&&RES_TYPES[b.zt]?b.zt:'R1'; }
 const RES_CAP=[0,4,12,40], RES_VAL=[0,750000,1900000,5200000], RES_UNITS=[0,1,3,12];
-const COM_JOBS=[0,6,16,45], COM_VAL=[0,900000,2200000,5500000];
+// Level 4 is a downtown office tower — it needs land value a strip mall never reaches.
+const COM_JOBS=[0,6,16,45,124], COM_VAL=[0,900000,2200000,5500000,17500000];
+const COM_LVNEED=[0,0,52,72,94], COM_MAXL=4;
 // Industrial designations. Every one of these is a real trade the council has to
 // make: warehouses hire the most people and wreck the roads and the tax base,
 // food processing drinks the water table, and R&D pays beautifully but employs
@@ -2074,7 +2134,8 @@ function setTool(id){
 }
 const ZONE_PICK=[
   ['R1','🏠 R-1','4 per lot'],['R2','🏘️ R-2','10 per lot'],['R3','🏢 R-3','26 per lot'],
-  ['MU','🏙️ Mixed','housing + shops'],['C','🏬 Commercial','sales tax'],
+  ['MU','🏙️ Mixed','housing + shops'],['R4','🏬 R-4 Tower','64 per lot · needs LV 72'],
+  ['C','🏬 Commercial','sales tax · towers at LV 94'],
   ['IL','🏭 M-1 Light','10 jobs · balanced'],['IW','📦 M-2 Logistics','18 jobs · heavy trucks'],
   ['IA','🌾 Ag Processing','14 jobs · thirsty'],['IR','🔬 R&D','12 jobs · high value'],
 ];
@@ -2195,6 +2256,7 @@ const IMPACT_FEES={
   R2:[['Quimby Act park fee (Gov. §66477)',15000],['School facilities fee (Ed. §17620)',12000],['Traffic impact fee (DIF)',8000]],
   R3:[['Quimby Act park fee (Gov. §66477)',36000],['School facilities fee (Ed. §17620)',28000],['Traffic impact fee (DIF)',17000]],
   MU:[['Quimby Act park fee (Gov. §66477)',26000],['School facilities fee (Ed. §17620)',19000],['Traffic impact fee (DIF)',21000]],
+  R4:[['Quimby Act park fee (Gov. §66477)',82000],['School facilities fee (Ed. §17620)',61000],['Traffic impact fee (DIF)',38000]],
   C:[['School facilities fee (commercial)',1200],['Traffic impact fee (DIF)',9000]],
   I:[['School facilities fee (industrial)',900],['Traffic impact fee (DIF)',6000]],
   IL:[['School facilities fee (industrial)',900],['Traffic impact fee (DIF)',6000]],
@@ -2208,10 +2270,10 @@ const IMPACT_FEES={
       ['Utility capacity fee (R&D)',9000]],
 };
 const ZONE_LABEL={R1:'Single-Family (R-1)',R2:'Townhomes (R-2)',R3:'Multi-Family (R-3)',
-  MU:'Mixed-Use',C:'Commercial',I:'Industrial',
+  MU:'Mixed-Use',R4:'High-Rise Residential (R-4)',C:'Commercial',I:'Industrial',
   IL:'Light Industrial (M-1)',IW:'Logistics & Warehouse (M-2)',
   IA:'Agriculture & Food Processing',IR:'Research & Development'};
-const ZONE_SHORT={R1:'🏠 R-1',R2:'🏘️ R-2',R3:'🏢 R-3',MU:'🏙️ Mixed-Use',C:'🏬 Commercial',I:'🏭 Industrial',
+const ZONE_SHORT={R1:'🏠 R-1',R2:'🏘️ R-2',R3:'🏢 R-3',MU:'🏙️ Mixed-Use',R4:'🏬 R-4 Tower',C:'🏬 Commercial',I:'🏭 Industrial',
   IL:'🏭 M-1',IW:'📦 M-2 Logistics',IA:'🌾 Ag Processing',IR:'🔬 R&D'};
 const CEQA_LABEL={
   exempt:['Categorical Exemption (Class 15 — minor land division)','ex'],
@@ -2666,7 +2728,15 @@ function zonedEmptyCells(z){
 }
 function tryDevelop(z,kind){
   let cells=[];
-  if(kind==='res') RES_ZONES.forEach(rz=>zonedEmptyCells(rz).forEach(c=>cells.push([c[0],c[1],rz])));
+  if(kind==='res') RES_ZONES.forEach(rz=>{
+    // towers only pencil on land that is already valuable; landValueAt is not
+    // cheap, so only pay for it on the designations that actually gate on it
+    const need=RES_TYPES[rz].minLV||0;
+    zonedEmptyCells(rz).forEach(c=>{
+      if(need&&landValueAt(c[0],c[1])<need) return;
+      cells.push([c[0],c[1],rz]);
+    });
+  });
   else if(kind==='ind') IND_ZONES.forEach(iz=>zonedEmptyCells(iz).forEach(c=>cells.push([c[0],c[1],iz])));
   else cells=zonedEmptyCells(z).map(c=>[c[0],c[1],z]);
   if(!cells.length) return;
@@ -2681,7 +2751,7 @@ function tryDevelop(z,kind){
 }
 function upgradeBuilding(b){
   const t=b.kind==='res'?zt(b):b.kind==='ind'?it(b):null;
-  const maxL=b.kind==='res'?RES_TYPES[t].maxL:b.kind==='ind'?IND_TYPES[t].maxL:3;
+  const maxL=b.kind==='res'?RES_TYPES[t].maxL:b.kind==='ind'?IND_TYPES[t].maxL:COM_MAXL;
   if(b.level>=maxL) return;
   const i=b.i,j=b.j,kind=b.kind,nl=b.level+1;
   const lvMul=0.75+(b.lv||60)/200;
@@ -3158,6 +3228,18 @@ function powerWatch(){
     advise(`⚠️ <b>Flex Alert.</b> Your evening reserve margin is down to ${Math.round(S.reserve*100)}%. One hot evening and the grid does not hold. ${S.gen.solar>S.peakCap?'Most of your capacity is solar, which is gone by the peak — batteries are what turn it into evening power.':'Add firm capacity or storage before the next heat wave.'}`,'warn');
   }
 }
+// R-4 lots sitting empty look like a bug unless the reason is said out loud.
+function towerWatch(){
+  if(!S.started||S.day-(S._towerWarn||-9999)<200) return;
+  const need=RES_TYPES.R4.minLV;
+  const lots=zonedEmptyCells('R4');
+  if(!lots.length) return;
+  let best=0;
+  lots.forEach(([i,j])=>{ const lv=landValueAt(i,j); if(lv>best) best=lv; });
+  if(best>=need) return;
+  S._towerWarn=S.day;
+  advise(`🏬 <b>Nothing is penciling on your R-4 land.</b> A tower needs land value <b>${need}</b> and your best high-rise lot is at <b>${Math.round(best)}</b>. Land value comes from transit within walking distance, parks, schools, low crime and uncongested streets — a stop nearby is worth the most of any of them.`,'warn');
+}
 // Warn while there is still time to act, instead of only once the taps run short.
 function waterWatch(){
   if(!S.started||S.waterUse<=0) return;
@@ -3293,6 +3375,7 @@ function dailyTick(){
   stepWaterStorage();
   waterWatch();
   powerWatch();
+  towerWatch();
   // demand
   const jobs=S.comJobs+S.indJobs+regionalJobs();
   const apprMul=clamp(0.5+S.approval/100,0.5,1.4);
@@ -3403,7 +3486,7 @@ function monthlyTick(){
   let salesTax=0;
   if(S.incorporated) allBuildings.forEach(b=>{
     if(b.state!=='done') return;
-    if(b.kind==='com') salesTax+=[0,600,1800,4500][b.level];
+    if(b.kind==='com') salesTax+=[0,600,1800,4500,9800][b.level]||0;
     else if(b.kind==='res'&&zt(b)==='MU') salesTax+=[0,900,2100][b.level]||0;
   });
   const tutTax=S.tut?salesTax*0.25:0;
@@ -3459,7 +3542,7 @@ function monthlyTick(){
     const nl=b.level+1;
     const lvNeed=b.kind==='res'?(RES_TYPES[zt(b)].lvNeed[nl]??999)
       :b.kind==='ind'?(IND_TYPES[it(b)].lvNeed[nl]??999)
-      :[0,0,52,72][Math.min(nl,3)];
+      :(COM_LVNEED[nl]??999);
     if((b.lv||0)<lvNeed) return;
     let score=0.22+d*0.35+(b.lv-50)/250;
     if(Math.random()<score*0.09) upgradeBuilding(b);
