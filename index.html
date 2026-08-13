@@ -1404,7 +1404,7 @@ function invalidateZoneIndex(){ _zoneIdx=null; }
 function initGrid(){
   invalidateZoneIndex();
   grid=[];
-  for(let i=0;i<G;i++){ grid[i]=[]; for(let j=0;j<G;j++) grid[i][j]={kind:null,zone:null,b:null,overlay:null,roadMesh:null,roadType:null,deckY:null,pylons:null}; }
+  for(let i=0;i<G;i++){ grid[i]=[]; for(let j=0;j<G;j++) grid[i][j]={kind:null,zone:null,b:null,overlay:null,roadMesh:null,roadType:null,deckY:null,pylons:null,bridgeId:null}; }
 }
 initGrid();
 function cellTopY(i,j){
@@ -1483,6 +1483,128 @@ function hasRoadAccess(i,j){
   for(let dx=-1;dx<=1;dx++) for(let dz=-1;dz<=1;dz++)
     if(roadNet.has((i+dx)+','+(j+dz))) return true;
   return false;
+}
+
+// ---------- bridges ----------
+// Drawn end to end like a transit line rather than painted cell by cell. A span
+// gets ONE deck height for its whole length, so it reads as a single structure
+// instead of a staircase, and it can cross water of any depth — the old
+// paint-a-road-over-water route refused anything deeper than 8 and stepped the
+// deck per cell. Spans are axis-aligned because roadNeighbors() is 4-connected:
+// a diagonal deck would look continuous and cars could never cross it.
+var bridges=[], bridgeSeq=0;
+const BRIDGE_BASE=14000, BRIDGE_WATER=2600, BRIDGE_LAND=900, BRIDGE_MAX=44;
+const BRIDGE_CLEAR=1.3;        // deck clearance above the waterline
+function bridgeAt(i,j){ return bridges.find(b=>b.cells.some(([a,c])=>a===i&&c===j)); }
+// Snap the far end onto the dominant axis so the deck is always straight.
+function bridgeSnap(a,b){
+  const di=Math.abs(b[0]-a[0]), dj=Math.abs(b[1]-a[1]);
+  return di>=dj?[b[0],a[1]]:[a[0],b[1]];
+}
+function bridgeCells(a,b){
+  const out=[];
+  if(a[0]===b[0]){ const st=Math.sign(b[1]-a[1])||1;
+    for(let j=a[1];;j+=st){ out.push([a[0],j]); if(j===b[1]) break; } }
+  else { const st=Math.sign(b[0]-a[0])||1;
+    for(let i=a[0];;i+=st){ out.push([i,a[1]]); if(i===b[0]) break; } }
+  return out;
+}
+// An abutment is any dry cell that is not too steep — deliberately looser than
+// cellBuildable(), because there is a thin shoreline band around every body of
+// water that is neither "buildable" (needs waterY+0.7) nor "water" (needs
+// waterY+0.4). Nothing could be placed on that ring, which is why roads used to
+// stop dead a cell short of the bank. Bridges land on it.
+function bridgeLandOK(i,j){
+  if(i<0||j<0||i>=G||j>=G) return false;
+  if(cellIsWater(i,j)) return false;
+  const c=cellCenter(i,j), s2=CELL/2;
+  const hs=[baseH(c.x-s2,c.z-s2),baseH(c.x+s2,c.z-s2),baseH(c.x-s2,c.z+s2),baseH(c.x+s2,c.z+s2)];
+  return Math.max(...hs)-Math.min(...hs)<=3.2;
+}
+function bridgeEndOK(i,j){
+  if(!bridgeLandOK(i,j)) return false;
+  const c=grid[i][j];
+  if(c.kind==='road') return true;
+  return !c.kind&&!c.b;
+}
+function bridgePlan(a,b){
+  if(!bridgeEndOK(a[0],a[1])) return {ok:false,why:'Start on dry land — that is the abutment'};
+  const e=bridgeSnap(a,b);
+  if(e[0]===a[0]&&e[1]===a[1]) return {ok:false,why:'Pick the far bank'};
+  if(!bridgeEndOK(e[0],e[1])) return {ok:false,why:'The far end must land on dry ground'};
+  const cells=bridgeCells(a,e);
+  if(cells.length>BRIDGE_MAX) return {ok:false,why:`Too long — ${BRIDGE_MAX} cells maximum`};
+  let water=0;
+  for(const [i,j] of cells){
+    const c=grid[i][j], isEnd=(i===a[0]&&j===a[1])||(i===e[0]&&j===e[1]);
+    if(cellIsWater(i,j)){ water++; continue; }
+    if(isEnd) continue;                                  // abutments already checked
+    if(!bridgeLandOK(i,j)) return {ok:false,why:'The ground is too steep partway across'};
+    if(c.kind==='road') continue;                        // crossing your own street is fine
+    if(c.kind||c.b) return {ok:false,why:'Something is already built along that line'};
+    if(parcelAt(i,j)) return {ok:false,why:'That line crosses a recorded or pending map'};
+  }
+  if(!water) return {ok:false,why:'That does not cross any water — use the Road tool'};
+  const cost=BRIDGE_BASE+water*BRIDGE_WATER+(cells.length-water)*BRIDGE_LAND;
+  return {ok:true,end:e,cells,water,cost,span:cells.length};
+}
+function buildBridge(plan,quiet){
+  invalidateZoneIndex();
+  const cells=plan.cells;
+  // one deck height for the entire span
+  // Flush with the highest abutment so the deck meets the street instead of
+  // stepping up onto it, but never lower than a boat's worth of clearance.
+  let deck=MAP.waterY+BRIDGE_CLEAR;
+  cells.forEach(([i,j])=>{ if(!cellIsWater(i,j)) deck=Math.max(deck,cellTopY(i,j)); });
+  const horiz=cells.length>1&&cells[0][1]===cells[1][1];
+  const g=new THREE.Group();
+  const id=++bridgeSeq;
+  cells.forEach(([i,j])=>{
+    const cc=cellCenter(i,j), cell=grid[i][j];
+    if(cell.kind==='road'&&cell.roadType!=='bridge') return;   // tie into existing street
+    const m=new THREE.Mesh(roadGeo,M.asphalt);
+    m.position.set(cc.x,deck+0.13,cc.z); m.receiveShadow=true; g.add(m);
+    cell.kind='road'; cell.roadMesh=m; cell.roadType='bridge'; cell.deckY=deck+0.26; cell.bridgeId=id;
+    // piers only where there is water to stand in
+    if(cellIsWater(i,j)){
+      const off=horiz?[[-1.3,0],[1.3,0]]:[[0,-1.3],[0,1.3]];
+      off.forEach(([ox,oz])=>{
+        const bed=baseH(cc.x+ox,cc.z+oz);
+        const depth=Math.max(deck-bed+0.6,0.8);
+        g.add(cyl(0.26,0.32,depth,M.concrete,cc.x+ox,deck-depth+0.1,cc.z+oz,7));
+      });
+    }
+    // railings run along the span, not always across z
+    if(horiz){
+      g.add(box(CELL,0.34,0.14,M.concrete,cc.x,deck+0.26,cc.z-1.86));
+      g.add(box(CELL,0.34,0.14,M.concrete,cc.x,deck+0.26,cc.z+1.86));
+    } else {
+      g.add(box(0.14,0.34,CELL,M.concrete,cc.x-1.86,deck+0.26,cc.z));
+      g.add(box(0.14,0.34,CELL,M.concrete,cc.x+1.86,deck+0.26,cc.z));
+    }
+    roadNet.add(i+','+j);
+    clearTreesOnCell(i,j);
+  });
+  cityG.add(g);
+  const B={id,cells,group:g,deck,cost:plan.cost,water:plan.water};
+  bridges.push(B);
+  cells.forEach(([i,j])=>{ refreshRoadMesh(i,j); roadNeighbors(i,j).forEach(([x,y])=>refreshRoadMesh(x,y)); });
+  rebuildLights();
+  if(!quiet) advise(`🌉 <b>Bridge open.</b> ${plan.span} cells across ${plan.water} of open water, on one continuous deck. It carries traffic and gives frontage exactly like a street.`);
+  return B;
+}
+function removeBridge(B){
+  if(!B) return;
+  cityG.remove(B.group);
+  B.cells.forEach(([i,j])=>{
+    const c=grid[i][j];
+    if(c.bridgeId!==B.id) return;
+    c.kind=null; c.roadMesh=null; c.roadType=null; c.deckY=null; c.bridgeId=null;
+    roadNet.delete(i+','+j);
+  });
+  const ix=bridges.indexOf(B); if(ix>=0) bridges.splice(ix,1);
+  B.cells.forEach(([i,j])=>roadNeighbors(i,j).forEach(([x,y])=>refreshRoadMesh(x,y)));
+  rebuildLights(); invalidateZoneIndex();
 }
 
 // ---------- street lights ----------
@@ -1721,6 +1843,7 @@ function clearCity(){
   spinners.length=0; plumes.length=0; plumeSprites.length=0;
   transitLines.length=0; lineSeq=0; draftLine=null; coverageMap=null;
   parcels.length=0; parcelSeq=0;
+  bridges.length=0; bridgeSeq=0; draftBridge=null;
   burning.clear(); roadNet.clear(); privateAccess.clear();
   for(const k in cellCong) delete cellCong[k];
   initGrid(); rebuildLights();
@@ -2136,6 +2259,7 @@ const TOOLS=[
   {id:'select',ico:'🖐',name:'Select',cost:0,cat:'land'},
   {id:'road',ico:'🛣️',name:'Road',cost:200,cat:'land'},
   {id:'ave',ico:'🛤️',name:'Avenue',cost:500,cat:'land'},
+  {id:'bridge',ico:'🌉',name:'Bridge',cost:0,cat:'land'},
   {id:'subdivide',ico:'📐',name:'Subdivide',cost:0,cat:'land'},
   {id:'infill',ico:'🧱',name:'Infill Lot',cost:50,cat:'land'},
   {id:'dozer',ico:'🚜',name:'Dozer',cost:10,cat:'land'},
@@ -2226,6 +2350,9 @@ function setTool(id){
   if(id==='subdivide'||id==='infill'){ renderSubHint(); sh.style.display='block'; }
   else sh.style.display='none';
   if(id!=='subdivide') hideRectPreview();
+  if(typeof draftBridge!=='undefined'){
+    if(id==='bridge') startBridge(); else if(draftBridge) cancelBridge();
+  }
   if(typeof LINE_TOOLS!=='undefined'){
     if(LINE_TOOLS.includes(id)) startDraft(id);
     else if(draftLine) cancelDraft();
@@ -2295,6 +2422,8 @@ function applyTool(i,j,isClick){
     if(pp&&pp.state==='pending'){ withdrawParcel(pp); advise(`📐 ${pp.tract} withdrawn from Planning. Application fees are not refundable.`,'warn'); return; }
     const L=transitLines.find(x=>x.stops.some(([a,b])=>a===i&&b===j));
     if(L){ removeLine(L); advise(`🚏 ${L.name} discontinued.`,'warn'); return; }
+    const BR=bridgeAt(i,j);
+    if(BR){ removeBridge(BR); spend(10); advise('🌉 Bridge demolished.','warn'); return; }
     if(cell.kind||cell.b){ clearCell(i,j); spend(10); } return;
   }
   if(t==='subdivide') return;
@@ -2305,11 +2434,8 @@ function applyTool(i,j,isClick){
       if(S.money<toolDef.cost){ if(isClick) toast('💸 Not enough funds.',true); return; }
       buildRoad(i,j,t); spend(toolDef.cost); return;
     }
-    if(cellBridgeable(i,j)){
-      const bc=BRIDGE_COST[t];
-      if(S.money<bc){ if(isClick) toast('💸 Bridge needs '+fmt$(bc)+'.',true); return; }
-      buildRoad(i,j,'bridge'); spend(bc);
-      if(isClick) toast('🌉 Bridge built.');
+    if(cellIsWater(i,j)){
+      if(isClick) toast('🌉 Use the Bridge tool to cross water — click one bank, then the other.',true);
       return;
     }
     return;
@@ -2528,6 +2654,79 @@ function decideMap(p){
 
 // ---------- transit line drafting ----------
 var transitBar=document.getElementById('transitBar');
+// ---------- bridge drafting: click a bank, click the far bank ----------
+var draftBridge=null;
+function startBridge(){
+  cancelBridge();
+  draftBridge={a:null,hover:null,preview:new THREE.Group()};
+  cityG.add(draftBridge.preview);
+  renderBridgeBar();
+}
+function cancelBridge(){
+  if(!draftBridge) return;
+  cityG.remove(draftBridge.preview);
+  draftBridge=null;
+  transitBar.style.display='none';
+}
+function drawBridgePreview(){
+  const d=draftBridge; if(!d) return;
+  cityG.remove(d.preview);
+  d.preview=new THREE.Group(); cityG.add(d.preview);
+  const mark=(i,j,col)=>{
+    const c=cellCenter(i,j);
+    const m=new THREE.Mesh(new THREE.CylinderGeometry(0.9,0.9,0.3,10),
+      new THREE.MeshBasicMaterial({color:col,transparent:true,opacity:0.85}));
+    m.position.set(c.x,Math.max(cellTopY(i,j),MAP.waterY)+0.6,c.z); d.preview.add(m);
+  };
+  if(d.a) mark(d.a[0],d.a[1],0x7fd0f0);
+  if(d.a&&d.hover){
+    const plan=bridgePlan(d.a,d.hover);
+    const col=plan.ok?0x7fd0f0:0xe05b4f;
+    const end=plan.ok?plan.end:bridgeSnap(d.a,d.hover);
+    const cells=bridgeCells(d.a,end);
+    const y=Math.max(MAP.waterY+BRIDGE_CLEAR,...cells.filter(([i,j])=>!cellIsWater(i,j)).map(([i,j])=>cellTopY(i,j)));
+    const pts=cells.map(([i,j])=>{ const c=cellCenter(i,j); return new THREE.Vector3(c.x,y+0.4,c.z); });
+    if(pts.length>1) d.preview.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({color:col})));
+    mark(end[0],end[1],col);
+  } else if(d.hover) mark(d.hover[0],d.hover[1],bridgeEndOK(d.hover[0],d.hover[1])?0x7fd0f0:0xe05b4f);
+}
+function renderBridgeBar(){
+  const d=draftBridge;
+  if(!d){ transitBar.style.display='none'; return; }
+  let body;
+  if(!d.a) body='Click the bank you are starting from.';
+  else {
+    const plan=d.hover?bridgePlan(d.a,d.hover):null;
+    body=plan?(plan.ok
+      ? `${plan.span} cells · ${plan.water} over water · <b>${fmt$(plan.cost)}</b>${S.money<plan.cost?' <span style="color:#ff8a7a">(you cannot afford this)</span>':''}`
+      : `<span style="color:#ff8a7a">${plan.why}</span>`)
+      : 'Now click the far bank — the span snaps straight.';
+  }
+  transitBar.style.display='block';
+  transitBar.innerHTML=`<b>🌉 New Bridge</b> — one continuous deck, any depth of water. ${body}
+    <div class="zonePick" style="margin-top:6px">
+      <button id="brUndo" ${!d.a?'disabled':''}>↶ Restart</button>
+      <button id="brCancel">✕ Cancel</button>
+    </div>`;
+  const u=document.getElementById('brUndo');
+  if(u) u.onclick=()=>{ d.a=null; drawBridgePreview(); renderBridgeBar(); };
+  document.getElementById('brCancel').onclick=()=>{ cancelBridge(); setTool('select'); };
+}
+function bridgeClick(i,j){
+  const d=draftBridge; if(!d) return;
+  if(!d.a){
+    if(!bridgeEndOK(i,j)){ toast('🌉 Start on dry land — that end is the abutment.',true); return; }
+    d.a=[i,j]; drawBridgePreview(); renderBridgeBar(); return;
+  }
+  const plan=bridgePlan(d.a,[i,j]);
+  if(!plan.ok){ toast('🌉 '+plan.why,true); return; }
+  if(S.money<plan.cost){ toast('💸 That bridge costs '+fmt$(plan.cost)+'.',true); return; }
+  spend(plan.cost);
+  buildBridge(plan);
+  cancelBridge();
+  setTool('select');
+}
 function startDraft(mode){
   if(draftLine) cancelDraft();
   draftLine={mode,stops:[],preview:new THREE.Group()};
@@ -2668,6 +2867,10 @@ canvas.addEventListener('pointerdown',e=>{
       const p=pickGround(e.clientX,e.clientY);
       if(p){ dragMode='rect'; rectAnchor={i:p.i,j:p.j}; }
     }
+    else if(S.tool==='bridge'){
+      const p=pickGround(e.clientX,e.clientY);
+      if(p) bridgeClick(p.i,p.j);
+    }
     else if(LINE_TOOLS.includes(S.tool)){
       const p=pickGround(e.clientX,e.clientY);
       if(p&&draftLine){
@@ -2706,6 +2909,17 @@ canvas.addEventListener('pointermove',e=>{
   }
   const p=pickGround(e.clientX,e.clientY);
   if(!p){ hoverMesh.visible=false; hideTip(); return; }
+  if(S.tool==='bridge'){
+    hideTip(); hoverMesh.visible=false;
+    if(draftBridge){
+      const k=p.i+','+p.j;
+      if(k!==draftBridge.hoverKey){
+        draftBridge.hoverKey=k; draftBridge.hover=[p.i,p.j];
+        drawBridgePreview(); renderBridgeBar();
+      }
+    }
+    return;
+  }
   if(LINE_TOOLS.includes(S.tool)){
     hideTip();
     // show the snapped target and the segment it would add, before committing
@@ -2737,7 +2951,7 @@ canvas.addEventListener('pointermove',e=>{
   if(S.tool!=='select'){
     const cell=grid[p.i][p.j];
     const ok=S.tool==='dozer'?!!(cell.kind||cell.b)
-      :(S.tool==='road'||S.tool==='ave')?((cellBuildable(p.i,p.j)||cellBridgeable(p.i,p.j))&&!cell.kind)
+      :(S.tool==='road'||S.tool==='ave')?(cellBuildable(p.i,p.j)&&!cell.kind)
       :(cellBuildable(p.i,p.j)&&!cell.kind);
     showHover(p.i,p.j,ok); hideTip();
     if(dragMode==='paint'&&lastCell!==p.i+','+p.j){ applyTool(p.i,p.j,false); lastCell=p.i+','+p.j; }
@@ -2835,14 +3049,22 @@ function showTip(p,mx,my){
     html+=lotTag;
   } else if(cell.kind==='road'){
     const cong=cellCong[p.i+','+p.j]||0;
-    html=`<b>${cell.roadType==='ave'?'Avenue':cell.roadType==='bridge'?'Bridge':'Road'}</b><br>Traffic: ${cong<0.4?'light':cong<0.8?'moderate':cong<1.1?'heavy':'gridlock'}`+lotTag;
+    if(cell.roadType==='bridge'){
+      const BR=bridgeAt(p.i,p.j);
+      tipEl.innerHTML=`<b>🌉 Bridge</b><br>${BR?`${BR.cells.length} cells · ${BR.water} over water<br>`:''}Carries traffic and gives frontage like any street<br><span style="color:#8f97a8">Bulldoze any deck cell to remove the whole span</span>`;
+      tipEl.style.display='block';
+      tipEl.style.left=Math.min(mx+16,innerWidth-260)+'px';
+      tipEl.style.top=Math.min(my+16,innerHeight-120)+'px';
+      return;
+    }
+    html=`<b>${cell.roadType==='ave'?'Avenue':'Road'}</b><br>Traffic: ${cong<0.4?'light':cong<0.8?'moderate':cong<1.1?'heavy':'gridlock'}`+lotTag;
   }
   else if(cell.kind==='zone') html=`<b>${RES_TYPES[cell.zone]?RES_TYPES[cell.zone].name:({C:'Commercial',I:'Industrial'}[cell.zone]||cell.zone)} lot</b><br>Vacant — waiting for a builder${hasRoadAccess(p.i,p.j)?'':' — <span style="color:#ff9c5b">no street frontage</span>'}`+lotTag;
   else {
     const h=cellH(p.i,p.j);
     html=`<b>Open land</b><br>Elevation ${Math.round(h*12+(MAP.hasOcean?0:380))} ft`;
     if(nearWaterCell(p.i,p.j)) html+=`<br>🌊 ${MAP.ceqaWaterLabel} — longer environmental review here`;
-    if(!cellBuildable(p.i,p.j)) html+=cellBridgeable(p.i,p.j)?'<br>🌉 Water — a road here becomes a bridge':'<br><span style="color:#ff9c5b">Too steep or wet to build</span>';
+    if(!cellBuildable(p.i,p.j)) html+=cellIsWater(p.i,p.j)?'<br>🌉 Open water — cross it with the <b>Bridge</b> tool':'<br><span style="color:#ff9c5b">Too steep or wet to build</span>';
     else {
       // A cleared lot inside a recorded tract is still platted land. Sending the
       // player to Subdivide here is wrong — that tool refuses, because the map
@@ -4166,7 +4388,8 @@ function serialize(){
     st:p.state,dl:p.daysLeft,td:p.totalDays,mt:p.mapType,cq:p.ceqa,fe:p.fees,tr:p.tract,ap:p.appealed}));
   const lines=transitLines.map(L=>({m:L.mode,s:L.stops,n:L.name,c:L.color,
     st:L.state||'done',dl:L.daysLeft||0,td:L.totalDays||0}));
-  return {v:8,map:S.mapId,parcels:par,lines,
+  const brs=bridges.map(B=>({a:B.cells[0],b:B.cells[B.cells.length-1]}));
+  return {v:8,map:S.mapId,parcels:par,lines,bridges:brs,
     S:{money,day,dom,month,year,startYear,pop,incorporated,cityName,drought,reservoir,approval,crime,tut,tutPending,termCount,disasterHeat,heatwave,floodTimer,
        impactFeesTotal:S.impactFeesTotal,tractsRecorded:S.tractsRecorded,lockDay:S.lockDay,
        transitGrants:S.transitGrants,waterStore:S.waterStore},
@@ -4212,7 +4435,8 @@ function loadGame(data){
   S.rhna=data.rhna||null; S.bonds=data.bonds||[];
   (data.deadTrees||[]).forEach(removeTree);
   // roads first
-  (data.cells||[]).filter(e=>e.k==='road').forEach(e=>buildRoad(e.i,e.j,e.rt||'road'));
+  (data.cells||[]).filter(e=>e.k==='road'&&e.rt!=='bridge').forEach(e=>buildRoad(e.i,e.j,e.rt||'road'));
+  (data.bridges||[]).forEach(d=>{ const plan=bridgePlan(d.a,d.b); if(plan.ok) buildBridge(plan,true); });
   // zones
   (data.cells||[]).forEach(e=>{ if(e.k==='zone'||(e.b&&e.k!=='road')) if(e.z) setZone(e.i,e.j,upZ(e.z)); });
   // buildings
