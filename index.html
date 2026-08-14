@@ -2411,6 +2411,7 @@ function setZone(i,j,z){
 function clearCell(i,j){
   invalidateZoneIndex();
   const cell=grid[i][j];
+  const par=parcelAt(i,j);          // capture before clearing, while state is still readable
   if(cell.b) demolishBuilding(cell.b,false);
   if(cell.overlay){ cityG.remove(cell.overlay); cell.overlay=null; }
   if(cell.roadMesh){ cityG.remove(cell.roadMesh); if(cell.pylons) cityG.remove(cell.pylons);
@@ -2419,6 +2420,22 @@ function clearCell(i,j){
     [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx,dz])=>{ const a=i+dx,b=j+dz; if(a>=0&&b>=0&&a<G&&b<G) refreshRoadMesh(a,b); });
     rebuildLights(); }
   cell.kind=null; cell.zone=null;
+  if(par&&par.state==='recorded') voidIfFullyCleared(par);
+}
+// Bulldozing an internal street orphans every lot that fronted only it — no
+// direct frontage, no private-access grant (tracts with real streets never get
+// one), and the parcel record survives the demolition forever. That left
+// interior lots permanently dead: Subdivide refuses because the map is still
+// "recorded", and Infill refuses because there is no road access left to grant.
+// Once every street and lot in a recorded tract is bulldozed, void the record
+// so the bare footprint goes back to raw land and can be replatted properly —
+// with an actual connected street network — instead of staying a scar.
+function voidIfFullyCleared(p){
+  const cells=p.streets.concat(p.lots);
+  if(cells.some(([a,b])=>{ const c=grid[a][b]; return c.kind||c.b; })) return;
+  clearParcelVisual(p);
+  p.state='void';
+  advise(`🧹 <b>${p.tract} fully cleared.</b> Every lot and street is gone, so the recorded map is void. The land is unplatted again — Subdivide it fresh whenever you are ready.`);
 }
 function ceqaDaysFor(kind,level,i,j,zone){
   let d=0;
