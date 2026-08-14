@@ -3194,11 +3194,19 @@ function maxCongNear(i,j,r){
   }
   return m;
 }
+// Land-value service radii are wider than a station's functional coverage —
+// crime coverage (elsewhere) and land value both read from a park/school/police
+// building, but they answer different questions. Crime coverage asks "does a
+// patrol reach this block," so it stays tight. Land value asks "does this block
+// read as a good neighborhood," which a resident feels from services blocks
+// away, not just the ones next door — so a zoned downtown doesn't need a civic
+// building crammed onto every other lot just to clear the R-4/office-tower bar.
+const LV_RADIUS={park:9,school:14,police:18};
 function landValueAt(i,j){
   let lv=44;
-  if(serviceNear(i,j,'park',5)) lv+=22;
-  if(serviceNear(i,j,'school',9)) lv+=15;
-  if(serviceNear(i,j,'police',12)) lv+=8;
+  if(serviceNear(i,j,'park',LV_RADIUS.park)) lv+=22;
+  if(serviceNear(i,j,'school',LV_RADIUS.school)) lv+=15;
+  if(serviceNear(i,j,'police',LV_RADIUS.police)) lv+=8;
   lv+=clamp(cellH(i,j)*1.1,0,12);
   if(MAP.hasOcean){ const c=cellCenter(i,j); const sx=c.x-MAP.shoreX(c.z); if(sx>8&&sx<70) lv+=18; }
   lv-=indNuisance(i,j,3);
