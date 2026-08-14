@@ -3697,7 +3697,10 @@ function towerWatch(){
   lots.forEach(([i,j])=>{ const lv=landValueAt(i,j); if(lv>best) best=lv; });
   if(best>=need) return;
   S._towerWarn=S.day;
-  advise(`🏬 <b>Nothing is penciling on your R-4 land.</b> A tower needs land value <b>${need}</b> and your best high-rise lot is at <b>${Math.round(best)}</b>. Land value comes from transit within walking distance, parks, schools, low crime and uncongested streets — a stop nearby is worth the most of any of them.`,'warn');
+  // Math.round would show 72 for a lot sitting at 71.6 — reading as "at the
+  // bar" while the raw-float gate still turns it away. Floor it so the number
+  // shown never claims more than the lot has actually cleared.
+  advise(`🏬 <b>Nothing is penciling on your R-4 land.</b> A tower needs land value <b>${need}</b> and your best high-rise lot is at <b>${Math.floor(best)}</b>. Land value comes from transit within walking distance, parks, schools, low crime and uncongested streets — a stop nearby is worth the most of any of them.`,'warn');
 }
 // Warn while there is still time to act, instead of only once the taps run short.
 function waterWatch(){
